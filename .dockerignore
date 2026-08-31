@@ -1,0 +1,8 @@
+node_modules
+coverage
+tests
+test-results
+.git
+.github
+.env
+*.md
