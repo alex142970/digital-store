@@ -35,7 +35,7 @@ services:
       retries: 20
     networks: [internal]
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
 
 networks:
   edge:
