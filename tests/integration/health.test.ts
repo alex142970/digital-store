@@ -44,7 +44,16 @@ test('health reports 503 when database is unreachable', async () => {
 })
 
 test('parallel migrations apply exactly once', async () => {
-  const [first, second] = await Promise.all([migrate(pool), migrate(pool)])
+  const fresh = await new PostgreSqlContainer('postgres:18-alpine').start()
+  const freshPool = createPool({ connectionString: fresh.getConnectionUri() })
 
-  expect([...first, ...second]).toEqual([])
+  try {
+    const [first, second] = await Promise.all([migrate(freshPool), migrate(freshPool)])
+    const applied = [...first, ...second]
+
+    expect(applied).toEqual(['001_init.sql'])
+  } finally {
+    await freshPool.end()
+    await fresh.stop()
+  }
 })

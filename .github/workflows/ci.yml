@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
@@ -22,6 +22,9 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm run openapi:lint
+      - run: npm run openapi:types
+      - run: git add -N src/types/api.d.ts && git diff --exit-code src/types/api.d.ts
       - run: npm run lint
       - run: npm run format
       - run: npm run typecheck
@@ -35,6 +38,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm run openapi:types
       - run: docker pull postgres:18-alpine
       - run: npm test
 

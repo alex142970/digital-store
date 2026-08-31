@@ -1,0 +1,588 @@
+openapi: 3.1.0
+info:
+  title: Digital Store API
+  version: 1.0.0
+servers:
+  - url: /
+tags:
+  - name: catalog
+    description: Товары витрины
+  - name: orders
+    description: Заказы и оплата
+  - name: webhooks
+    description: События платёжной системы
+  - name: providers
+    description: Заглушки поставщиков
+  - name: admin
+    description: Восстановление заказов вручную
+  - name: system
+    description: Служебные эндпоинты
+
+paths:
+  /api/health:
+    get:
+      tags: [system]
+      operationId: health
+      security: []
+      summary: Проверить доступность сервиса
+      responses:
+        '200':
+          description: Сервис и база доступны
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: База недоступна
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+  /api/products:
+    get:
+      tags: [catalog]
+      operationId: listProducts
+      security: []
+      summary: Получить каталог товаров
+      responses:
+        '200':
+          description: Список товаров
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [products]
+                properties:
+                  products:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Product'
+
+  /api/orders:
+    post:
+      tags: [orders]
+      operationId: createOrder
+      security: []
+      summary: Создать заказ
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '200':
+          description: Заказ уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '201':
+          description: Заказ создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  /api/orders/{orderId}:
+    get:
+      tags: [orders]
+      operationId: getOrder
+      security: []
+      summary: Получить заказ
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Заказ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  /api/orders/{orderId}/pay:
+    post:
+      tags: [orders]
+      operationId: payOrder
+      security: []
+      summary: Оплатить заказ
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayRequest'
+      responses:
+        '202':
+          description: Вебхук отправлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  /webhook/payment:
+    post:
+      tags: [webhooks]
+      operationId: receivePaymentWebhook
+      security: []
+      summary: Принять уведомление об оплате
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentWebhook'
+      responses:
+        '200':
+          description: Событие принято
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          description: Событие не принято
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  /internal/providers/{provider}/issue:
+    post:
+      tags: [providers]
+      operationId: issueFromProvider
+      security: []
+      summary: Запросить код у поставщика
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [a, b]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueRequest'
+      responses:
+        '200':
+          description: Код выдан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IssueResponse'
+        '409':
+          description: Товара нет в наличии
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IssueError'
+        '500':
+          description: Сбой поставщика
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IssueError'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  /api/admin/orders:
+    get:
+      tags: [admin]
+      operationId: listStuckOrders
+      summary: Получить оплаченные, но не выданные заказы
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [stuck, all]
+            default: stuck
+      responses:
+        '200':
+          description: Список заказов
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orders]
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  /api/admin/keys:
+    post:
+      tags: [admin]
+      operationId: restockKeys
+      summary: Пополнить пул ключей
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestockRequest'
+      responses:
+        '201':
+          description: Ключи добавлены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestockResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  /api/admin/orders/{orderId}/retry:
+    post:
+      tags: [admin]
+      operationId: retryDelivery
+      summary: Повторить выдачу
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Заказ после попытки выдачи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  parameters:
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Не найдено
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Нужен админский токен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotImplemented:
+      description: Ещё не реализовано
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Product:
+      type: object
+      required: [sku, name, type, price, currency]
+      properties:
+        sku:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [topup, key, subscription, giftcard]
+        price:
+          type: integer
+          minimum: 1
+        currency:
+          type: string
+        image:
+          type: [string, 'null']
+
+    OrderStatus:
+      type: string
+      enum:
+        - created
+        - paid
+        - delivering
+        - delivered
+        - payment_failed
+        - out_of_stock
+        - delivery_failed
+
+    Order:
+      type: object
+      required: [id, sku, amount, discount, total, currency, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        sku:
+          type: string
+        amount:
+          type: integer
+          minimum: 0
+          description: Цена товара до скидки
+        discount:
+          type: integer
+          minimum: 0
+          description: Размер скидки
+        total:
+          type: integer
+          minimum: 0
+          description: Сумма к оплате
+        currency:
+          type: string
+        failureReason:
+          type: [string, 'null']
+        promoCode:
+          type: [string, 'null']
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        code:
+          type: [string, 'null']
+          description: Код активации товара
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateOrderRequest:
+      type: object
+      required: [sku, idempotencyKey]
+      additionalProperties: false
+      properties:
+        sku:
+          type: string
+          minLength: 1
+        promoCode:
+          type: string
+          minLength: 1
+          maxLength: 64
+        idempotencyKey:
+          type: string
+          minLength: 8
+          maxLength: 128
+
+    PayRequest:
+      type: object
+      required: [outcome]
+      additionalProperties: false
+      properties:
+        outcome:
+          type: string
+          enum: [success, fail]
+
+    PaymentWebhook:
+      type: object
+      required: [event_id, order_id, status, amount, currency, created_at]
+      properties:
+        event_id:
+          type: string
+          minLength: 1
+        order_id:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          enum: [paid, failed]
+        amount:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    IssueRequest:
+      type: object
+      required: [request_id, sku, order_id]
+      additionalProperties: false
+      properties:
+        request_id:
+          type: string
+          minLength: 1
+        sku:
+          type: string
+          minLength: 1
+        order_id:
+          type: string
+          minLength: 1
+
+    IssueResponse:
+      type: object
+      required: [status, request_id, code]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        request_id:
+          type: string
+        code:
+          type: string
+
+    IssueError:
+      type: object
+      required: [status, reason]
+      properties:
+        status:
+          type: string
+          enum: [error]
+        reason:
+          type: string
+
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          enum:
+            - validation_error
+            - not_found
+            - unauthorized
+            - conflict
+            - promo_limit_reached
+            - promo_not_found
+            - product_not_found
+            - order_not_payable
+            - rate_limited
+            - not_implemented
+            - internal_error
+        message:
+          type: string
+
+    Health:
+      type: object
+      required: [status, db]
+      properties:
+        status:
+          type: string
+          enum: [ok, error]
+        db:
+          type: string
+          enum: [up, down]
+
+    PaymentAccepted:
+      type: object
+      required: [eventId]
+      properties:
+        eventId:
+          type: string
+
+    WebhookAccepted:
+      type: object
+      required: [accepted]
+      properties:
+        accepted:
+          type: boolean
+        deferred:
+          type: boolean
+
+    RestockRequest:
+      type: object
+      required: [sku, keys]
+      additionalProperties: false
+      properties:
+        sku:
+          type: string
+          minLength: 1
+        keys:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+
+    RestockResult:
+      type: object
+      required: [sku, added, available]
+      properties:
+        sku:
+          type: string
+        added:
+          type: integer
+        available:
+          type: integer
+
+    OrderIdParams:
+      type: object
+      required: [orderId]
+      properties:
+        orderId:
+          type: string
+          minLength: 1
+          maxLength: 64
+
+    ProviderParams:
+      type: object
+      required: [provider]
+      properties:
+        provider:
+          type: string
+          enum: [a, b]
+
+    AdminOrdersQuery:
+      type: object
+      properties:
+        state:
+          type: string
+          enum: [stuck, all]
+          default: stuck
+          description: stuck — paid, delivering, out_of_stock, delivery_failed

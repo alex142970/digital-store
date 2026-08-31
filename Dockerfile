@@ -6,6 +6,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts
 
 COPY src ./src
+COPY data ./data
+COPY openapi.yaml ./
 COPY public ./public
 
 ENV NODE_ENV=production

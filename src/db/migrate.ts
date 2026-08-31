@@ -11,7 +11,7 @@ const LOCK_KEY = 'digital-store:migrations'
 const checksum = (sql: string) => createHash('sha256').update(sql).digest('hex').slice(0, 16)
 
 export async function migrate(target?: pg.Pool): Promise<string[]> {
-  const pool = target ?? createPool({ statement_timeout: 0 })
+  const pool = target ?? createPool({ statement_timeout: 0, lock_timeout: 0 })
   const client = await pool.connect()
   const applied: string[] = []
   let failure: unknown
