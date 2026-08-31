@@ -1,0 +1,46 @@
+services:
+  app:
+    image: ghcr.io/alex142970/digital-store:latest
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://store:${POSTGRES_PASSWORD:?}@db:5432/store
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?}
+      TRUST_PROXY: 172.16.0.0/12
+      LOG_LEVEL: info
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [edge, internal]
+    labels:
+      traefik.enable: 'true'
+      traefik.docker.network: edge
+      traefik.http.routers.digital-store.rule: Host(`${PUBLIC_HOST:?}`)
+      traefik.http.routers.digital-store.entrypoints: websecure
+      traefik.http.routers.digital-store.tls.certresolver: le
+      traefik.http.services.digital-store.loadbalancer.server.port: '3000'
+
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: store
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: store
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U store -d store']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [internal]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+networks:
+  edge:
+    external: true
+  internal: {}
+
+volumes:
+  pgdata:
