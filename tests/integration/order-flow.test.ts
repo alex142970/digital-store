@@ -155,6 +155,34 @@ test('empty pool leaves the order recoverable and delivery resumes after restock
   expect(recovered.code).toBe('RSTK-0001-0001')
 })
 
+test('event stored before the order is applied once the order appears', async () => {
+  const { applyPending } = await import('../../src/services/webhooks.ts')
+  const orderId = 'ord_arrives_later'
+
+  await ctx.pool.query(
+    `insert into webhook_events (event_id, order_id, status, occurred_at, payload)
+     values ('evt_before_order', $1, 'paid', now(), $2)`,
+    [orderId, JSON.stringify({ amount: 1290, currency: 'RUB' })]
+  )
+
+  await ctx.pool.query(
+    `insert into orders (id, sku, amount, idempotency_key)
+     values ($1, 'KEY-CS2-PRIME', 1290, 'arrives-later-key')`,
+    [orderId]
+  )
+
+  await applyPending(ctx.pool, orderId)
+
+  const delivered = (await fetchOrder(ctx, orderId)).json()
+  expect(delivered.status).toBe('delivered')
+  expect(delivered.code).toBeTruthy()
+
+  const { rows } = await ctx.pool.query(
+    "select applied_at from webhook_events where event_id = 'evt_before_order'"
+  )
+  expect(rows[0].applied_at).not.toBeNull()
+})
+
 test('unpaid order never receives a key through the delivery service', async () => {
   const { deliverOrder } = await import('../../src/services/delivery.ts')
   const order = (await createOrder(ctx, 'unpaid-delivery-1')).json()
