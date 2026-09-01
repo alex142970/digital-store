@@ -211,7 +211,6 @@ export interface components {
         };
         CreateOrderRequest: {
             sku: string;
-            promoCode?: string;
             idempotencyKey: string;
         };
         PayRequest: {
@@ -471,7 +470,15 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
-            501: components["responses"]["NotImplemented"];
+            /** @description Заказ нельзя оплатить в текущем статусе */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     receivePaymentWebhook: {

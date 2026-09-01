@@ -136,8 +136,12 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
-        '501':
-          $ref: '#/components/responses/NotImplemented'
+        '409':
+          description: Заказ нельзя оплатить в текущем статусе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /webhook/payment:
     post:
@@ -410,10 +414,6 @@ components:
         sku:
           type: string
           minLength: 1
-        promoCode:
-          type: string
-          minLength: 1
-          maxLength: 64
         idempotencyKey:
           type: string
           minLength: 8

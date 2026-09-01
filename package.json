@@ -20,7 +20,6 @@
     "openapi:lint": "redocly lint openapi.yaml"
   },
   "dependencies": {
-    "@fastify/ajv-compiler": "4.0.6",
     "@fastify/compress": "^9.2.0",
     "@fastify/helmet": "13.1.1",
     "@fastify/rate-limit": "11.2.0",
@@ -31,14 +30,12 @@
     "fastify": "5.12.1",
     "fastify-plugin": "^6.0.0",
     "pg": "8.23.0",
-    "pg-boss": "12.29.0",
     "pino": "10.3.1",
     "yaml": "^2.9.0",
     "zod": "4.5.4"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "1.62.1",
     "@redocly/cli": "2.49.0",
     "@testcontainers/postgresql": "12.1.0",
     "@types/node": "26.4.0",

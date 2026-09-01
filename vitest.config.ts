@@ -2,6 +2,8 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
+    globalSetup: ['tests/setup/global.ts'],
+    fileParallelism: false,
     env: {
       NODE_ENV: 'test',
       DATABASE_URL: 'postgres://unused:unused@127.0.0.1:1/unused',

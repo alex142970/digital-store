@@ -8,6 +8,7 @@ import fastifyCompress from '@fastify/compress'
 import type pg from 'pg'
 import { config } from './config.ts'
 import { getPool } from './db/pool.ts'
+import { OrderError } from './services/orders.ts'
 import validation from './plugins/validation.ts'
 import docs from './plugins/docs.ts'
 import productRoutes from './routes/products.ts'
@@ -17,6 +18,14 @@ import providerRoutes from './routes/providers.ts'
 import adminRoutes from './routes/admin.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+
+const ERROR_CODE_BY_STATUS: Record<number, string> = {
+  400: 'validation_error',
+  401: 'unauthorized',
+  404: 'not_found',
+  409: 'conflict',
+  429: 'rate_limited'
+}
 
 export type BuildOptions = {
   pool?: pg.Pool
@@ -52,6 +61,10 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   app.setErrorHandler((error: FastifyError, request, reply) => {
     request.log.error({ err: error }, 'request failed')
 
+    if (error instanceof OrderError) {
+      return reply.status(error.status).send({ error: error.code, message: error.message })
+    }
+
     const status = error.statusCode ?? 500
 
     if (status >= 500) {
@@ -60,20 +73,10 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
         .send({ error: 'internal_error', message: 'Internal server error' })
     }
 
-    const code =
-      error.code === 'FST_ERR_VALIDATION'
-        ? 'validation_error'
-        : status === 401
-          ? 'unauthorized'
-          : status === 404
-            ? 'not_found'
-            : status === 409
-              ? 'conflict'
-              : status === 429
-                ? 'rate_limited'
-                : 'validation_error'
-
-    return reply.status(status).send({ error: code, message: error.message })
+    return reply.status(status).send({
+      error: ERROR_CODE_BY_STATUS[status] ?? 'validation_error',
+      message: error.message
+    })
   })
 
   app.setNotFoundHandler((request, reply) =>

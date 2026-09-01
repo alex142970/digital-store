@@ -1,9 +1,12 @@
 import type { FastifyInstance } from 'fastify'
 import { ref } from '../openapi.ts'
-import { notImplemented } from './not-implemented.ts'
+import { receivePayment } from '../services/webhooks.ts'
+import type { components } from '../types/api.d.ts'
+
+type PaymentWebhook = components['schemas']['PaymentWebhook']
 
 export default async function webhookRoutes(app: FastifyInstance) {
-  app.post(
+  app.post<{ Body: PaymentWebhook }>(
     '/webhook/payment',
     {
       config: { rateLimit: false },
@@ -12,10 +15,10 @@ export default async function webhookRoutes(app: FastifyInstance) {
         response: {
           200: ref('WebhookAccepted'),
           400: ref('Error'),
-          501: ref('Error')
+          500: ref('Error')
         }
       }
     },
-    notImplemented('receivePaymentWebhook')
+    async (request) => receivePayment(app.pool, request.body)
   )
 }

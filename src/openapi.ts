@@ -30,7 +30,3 @@ export const specSchema = {
 }
 
 export const ref = (name: string) => ({ $ref: `${SCHEMA_ID}#/components/schemas/${name}` })
-
-export const response = (name: string) => ({
-  $ref: `${SCHEMA_ID}#/components/responses/${name}/content/application~1json/schema`
-})
