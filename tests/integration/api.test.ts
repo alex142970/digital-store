@@ -84,7 +84,7 @@ test('admin endpoints require a valid bearer token', async () => {
 
   expect(anonymous.statusCode).toBe(401)
   expect(wrong.statusCode).toBe(401)
-  expect(valid.statusCode).toBe(501)
+  expect(valid.statusCode).toBe(200)
 })
 
 test('percent encoded admin path stays protected', async () => {

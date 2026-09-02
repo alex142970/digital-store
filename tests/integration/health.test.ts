@@ -51,7 +51,12 @@ test('parallel migrations apply exactly once', async () => {
     const [first, second] = await Promise.all([migrate(freshPool), migrate(freshPool)])
     const applied = [...first, ...second]
 
-    expect(applied).toEqual(['001_init.sql', '002_order_idempotency.sql'])
+    const { readdirSync } = await import('node:fs')
+    const expected = readdirSync('src/db/migrations')
+      .filter((file) => file.endsWith('.sql'))
+      .sort()
+
+    expect(applied).toEqual(expected)
   } finally {
     await freshPool.end()
     await fresh.stop()

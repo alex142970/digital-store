@@ -8,6 +8,14 @@ const schema = z.object({
   PG_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
   PG_LOCK_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
   TRUST_PROXY: z.string().default('127.0.0.1'),
+  PROVIDER_A_ERROR_RATE: z.coerce.number().min(0).max(1).default(0.3),
+  PROVIDER_A_TIMEOUT_RATE: z.coerce.number().min(0).max(1).default(0.2),
+  PROVIDER_B_ERROR_RATE: z.coerce.number().min(0).max(1).default(0.1),
+  PROVIDER_B_TIMEOUT_RATE: z.coerce.number().min(0).max(1).default(0.1),
+  PROVIDER_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
+  PROVIDER_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
+  DELIVERY_SWEEP_INTERVAL_MS: z.coerce.number().int().nonnegative().default(15_000),
+  DELIVERY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(60_000),
   ADMIN_TOKEN: z.string().min(8),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info')
 })

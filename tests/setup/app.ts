@@ -15,11 +15,21 @@ export async function startApp(): Promise<TestContext> {
   await migrate(pool)
   const app = await buildApp({ pool, logger: false })
 
+  await app.listen({ port: 0, host: '127.0.0.1' })
+  const address = app.server.address()
+
+  if (address && typeof address === 'object') {
+    process.env.PROVIDER_BASE_URL = `http://127.0.0.1:${address.port}`
+  }
+
   return { app, pool }
 }
 
 export async function resetData(pool: pg.Pool): Promise<void> {
-  await pool.query('truncate deliveries, promocode_uses, webhook_events, license_keys, orders')
+  await pool.query(
+    'truncate delivery_attempts, deliveries, promocode_uses, webhook_events, license_keys, orders'
+  )
+  await pool.query('truncate provider_issues')
   await seed(pool)
 }
 

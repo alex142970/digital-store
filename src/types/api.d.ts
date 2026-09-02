@@ -245,7 +245,7 @@ export interface components {
         };
         Error: {
             /** @enum {string} */
-            error: "validation_error" | "not_found" | "unauthorized" | "conflict" | "promo_limit_reached" | "promo_not_found" | "product_not_found" | "order_not_payable" | "rate_limited" | "not_implemented" | "internal_error";
+            error: "validation_error" | "not_found" | "unauthorized" | "conflict" | "promo_limit_reached" | "promo_not_found" | "product_not_found" | "order_not_payable" | "rate_limited" | "internal_error";
             message: string;
         };
         Health: {
@@ -307,15 +307,6 @@ export interface components {
         };
         /** @description Нужен админский токен */
         Unauthorized: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["Error"];
-            };
-        };
-        /** @description Ещё не реализовано */
-        NotImplemented: {
             headers: {
                 [name: string]: unknown;
             };
@@ -417,7 +408,6 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
-            501: components["responses"]["NotImplemented"];
         };
     };
     getOrder: {
@@ -441,7 +431,6 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
-            501: components["responses"]["NotImplemented"];
         };
     };
     payOrder: {
@@ -513,7 +502,6 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            501: components["responses"]["NotImplemented"];
         };
     };
     issueFromProvider: {
@@ -549,8 +537,8 @@ export interface operations {
                     "application/json": components["schemas"]["IssueError"];
                 };
             };
-            /** @description Сбой поставщика */
-            500: {
+            /** @description Поставщик недоступен */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -558,7 +546,6 @@ export interface operations {
                     "application/json": components["schemas"]["IssueError"];
                 };
             };
-            501: components["responses"]["NotImplemented"];
         };
     };
     listStuckOrders: {
@@ -583,8 +570,8 @@ export interface operations {
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
-            501: components["responses"]["NotImplemented"];
         };
     };
     restockKeys: {
@@ -609,8 +596,9 @@ export interface operations {
                     "application/json": components["schemas"]["RestockResult"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
-            501: components["responses"]["NotImplemented"];
+            404: components["responses"]["NotFound"];
         };
     };
     retryDelivery: {
@@ -633,9 +621,18 @@ export interface operations {
                     "application/json": components["schemas"]["Order"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
-            501: components["responses"]["NotImplemented"];
+            /** @description Заказ нельзя выдать в текущем статусе */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
 }

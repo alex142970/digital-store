@@ -1,8 +1,10 @@
 import { buildApp } from './app.ts'
 import { config } from './config.ts'
 import { closePool } from './db/pool.ts'
+import { startDeliverySweeper } from './services/sweeper.ts'
 
 const app = await buildApp()
+const stopSweeper = startDeliverySweeper(app)
 
 let closing = false
 
@@ -15,6 +17,7 @@ const close = async (signal: string) => {
   force.unref()
 
   try {
+    stopSweeper()
     await app.close()
     await closePool()
   } catch (error) {

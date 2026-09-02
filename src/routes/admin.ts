@@ -1,16 +1,20 @@
-import { timingSafeEqual } from 'node:crypto'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { config } from '../config.ts'
 import { ref } from '../openapi.ts'
-import { notImplemented } from './not-implemented.ts'
+import { deliverOrder } from '../services/delivery.ts'
+import { getOrder } from '../services/orders.ts'
+import type { components } from '../types/api.d.ts'
 
-const tokenMatches = (candidate: string) => {
-  const expected = Buffer.from(config.ADMIN_TOKEN)
-  const actual = Buffer.from(candidate)
+type RestockRequest = components['schemas']['RestockRequest']
+type Order = components['schemas']['Order']
 
-  if (expected.length !== actual.length) return false
-  return timingSafeEqual(expected, actual)
-}
+const STUCK = ['paid', 'delivering', 'out_of_stock', 'delivery_failed']
+
+const digest = (value: string) => createHash('sha256').update(value).digest()
+
+const tokenMatches = (candidate: string) =>
+  timingSafeEqual(digest(config.ADMIN_TOKEN), digest(candidate))
 
 export default async function adminRoutes(app: FastifyInstance) {
   app.addHook('onRequest', async (request, reply) => {
@@ -22,7 +26,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   })
 
-  app.get(
+  app.get<{ Querystring: { state?: 'stuck' | 'all' } }>(
     '/api/admin/orders',
     {
       schema: {
@@ -33,37 +37,105 @@ export default async function adminRoutes(app: FastifyInstance) {
             required: ['orders'],
             properties: { orders: { type: 'array', items: ref('Order') } }
           },
-          401: ref('Error'),
-          501: ref('Error')
+          400: ref('Error'),
+          401: ref('Error')
         }
       }
     },
-    notImplemented('listStuckOrders')
+    async (request) => {
+      const stuckOnly = (request.query.state ?? 'stuck') === 'stuck'
+
+      const { rows } = await app.pool.query<{ id: string }>(
+        `select o.id from orders o
+         where not $1::boolean or o.status = any($2::text[])
+         order by o.updated_at`,
+        [stuckOnly, STUCK]
+      )
+
+      const orders: Order[] = []
+
+      for (const row of rows) {
+        orders.push(await getOrder(app.pool, row.id))
+      }
+
+      return { orders }
+    }
   )
 
-  app.post(
+  app.post<{ Params: { orderId: string } }>(
     '/api/admin/orders/:orderId/retry',
     {
       schema: {
         params: ref('OrderIdParams'),
-        response: { 200: ref('Order'), 401: ref('Error'), 404: ref('Error'), 501: ref('Error') }
+        response: {
+          200: ref('Order'),
+          401: ref('Error'),
+          404: ref('Error'),
+          409: ref('Error')
+        }
       }
     },
-    notImplemented('retryDelivery')
+    async (request, reply) => {
+      const order = await getOrder(app.pool, request.params.orderId)
+      const outcome = await deliverOrder(app.pool, order.id)
+
+      if (outcome === 'not_found') {
+        return reply.status(409).send({
+          error: 'conflict',
+          message: `Order in status ${order.status} cannot be delivered`
+        })
+      }
+
+      if (outcome === 'in_progress') {
+        return reply.status(409).send({
+          error: 'conflict',
+          message: 'Delivery is already running for this order'
+        })
+      }
+
+      return getOrder(app.pool, order.id)
+    }
   )
 
-  app.post(
+  app.post<{ Body: RestockRequest }>(
     '/api/admin/keys',
     {
       schema: {
         body: ref('RestockRequest'),
         response: {
           201: ref('RestockResult'),
+          400: ref('Error'),
           401: ref('Error'),
-          501: ref('Error')
+          404: ref('Error')
         }
       }
     },
-    notImplemented('restockKeys')
+    async (request, reply) => {
+      const { sku, keys } = request.body
+
+      const product = await app.pool.query('select 1 from products where sku = $1', [sku])
+
+      if (product.rowCount === 0) {
+        return reply.status(404).send({ error: 'product_not_found', message: `Unknown sku ${sku}` })
+      }
+
+      const inserted = await app.pool.query(
+        `insert into license_keys (sku, code)
+         select $1, unnest($2::text[])
+         on conflict (code) do nothing`,
+        [sku, keys]
+      )
+
+      const available = await app.pool.query<{ count: number }>(
+        'select count(*)::int as count from license_keys where sku = $1 and order_id is null',
+        [sku]
+      )
+
+      return reply.status(201).send({
+        sku,
+        added: inserted.rowCount ?? 0,
+        available: available.rows[0]?.count ?? 0
+      })
+    }
   )
 }

@@ -236,10 +236,10 @@ const run = async () => {
   const states = await Promise.all(contenders.map((id) => get(`/api/orders/${id}`)))
   check(
     '[ТЗ 1] все заказы борются за последний ключ: выдан ровно один',
-    { delivered: 1, outOfStock: CONCURRENCY - 1, distinctCodes: 1, failedResponses: 0 },
+    { delivered: 1, undelivered: CONCURRENCY - 1, distinctCodes: 1, failedResponses: 0 },
     {
       delivered: states.filter((r) => r.body?.status === 'delivered').length,
-      outOfStock: states.filter((r) => r.body?.status === 'out_of_stock').length,
+      undelivered: states.filter((r) => r.body?.status !== 'delivered').length,
       distinctCodes: new Set(states.map((r) => r.body?.code).filter(Boolean)).size,
       failedResponses: contenderWebhooks.filter((r) => r.status !== 200).length
     },

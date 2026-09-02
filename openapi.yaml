@@ -88,8 +88,6 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
-        '501':
-          $ref: '#/components/responses/NotImplemented'
 
   /api/orders/{orderId}:
     get:
@@ -108,8 +106,6 @@ paths:
                 $ref: '#/components/schemas/Order'
         '404':
           $ref: '#/components/responses/NotFound'
-        '501':
-          $ref: '#/components/responses/NotImplemented'
 
   /api/orders/{orderId}/pay:
     post:
@@ -170,8 +166,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '501':
-          $ref: '#/components/responses/NotImplemented'
 
   /internal/providers/{provider}/issue:
     post:
@@ -205,14 +199,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IssueError'
-        '500':
-          description: Сбой поставщика
+        '503':
+          description: Поставщик недоступен
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/IssueError'
-        '501':
-          $ref: '#/components/responses/NotImplemented'
 
   /api/admin/orders:
     get:
@@ -242,10 +234,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '501':
-          $ref: '#/components/responses/NotImplemented'
 
   /api/admin/keys:
     post:
@@ -267,10 +259,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RestockResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '501':
-          $ref: '#/components/responses/NotImplemented'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /api/admin/orders/{orderId}/retry:
     post:
@@ -288,12 +282,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
-        '501':
-          $ref: '#/components/responses/NotImplemented'
+        '409':
+          description: Заказ нельзя выдать в текущем статусе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
 components:
   securitySchemes:
@@ -326,12 +326,6 @@ components:
             $ref: '#/components/schemas/Error'
     Unauthorized:
       description: Нужен админский токен
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    NotImplemented:
-      description: Ещё не реализовано
       content:
         application/json:
           schema:
@@ -503,7 +497,6 @@ components:
             - product_not_found
             - order_not_payable
             - rate_limited
-            - not_implemented
             - internal_error
         message:
           type: string
