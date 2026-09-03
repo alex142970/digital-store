@@ -1,5 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import type pg from 'pg'
+import { withTransaction } from '../db/pool.ts'
+import { reservePromocode } from './promocodes.ts'
 import type { components } from '../types/api.d.ts'
 
 export type Order = components['schemas']['Order']
@@ -57,37 +59,59 @@ const newOrderId = () => `ord_${randomBytes(9).toString('base64url')}`
 
 export async function createOrder(
   pool: pg.Pool,
-  input: { sku: string; idempotencyKey: string }
+  input: { sku: string; idempotencyKey: string; promoCode?: string }
 ): Promise<{ order: Order; created: boolean }> {
-  const existing = await pool.query<OrderRow>(`${SELECT_ORDER} where o.idempotency_key = $1`, [
-    input.idempotencyKey
-  ])
+  const product = await pool.query<{ price: number; currency: string }>(
+    'select price, currency from products where sku = $1',
+    [input.sku]
+  )
 
-  if (existing.rows[0]) {
-    return { order: toOrder(existing.rows[0]), created: false }
-  }
+  const found = product.rows[0]
 
-  const product = await pool.query<{ price: number }>('select price from products where sku = $1', [
-    input.sku
-  ])
-
-  if (!product.rows[0]) {
+  if (!found) {
     throw new OrderError(404, 'product_not_found', `Product ${input.sku} not found`)
   }
 
   const id = newOrderId()
 
-  const inserted = await pool.query<{ id: string }>(
-    `insert into orders (id, sku, amount, idempotency_key)
-     values ($1, $2, $3, $4)
-     on conflict (idempotency_key) where idempotency_key is not null do nothing
-     returning id`,
-    [id, input.sku, product.rows[0].price, input.idempotencyKey]
-  )
+  const createdId = await withTransaction(async (client) => {
+    const inserted = await client.query<{ id: string }>(
+      `insert into orders (id, sku, amount, idempotency_key)
+       values ($1, $2, $3, $4)
+       on conflict (idempotency_key) where idempotency_key is not null do nothing
+       returning id`,
+      [id, input.sku, found.price, input.idempotencyKey]
+    )
 
-  const orderId = inserted.rows[0]?.id
-  const { rows } = orderId
-    ? await pool.query<OrderRow>(`${SELECT_ORDER} where o.id = $1`, [orderId])
+    const orderId = inserted.rows[0]?.id
+
+    if (!orderId) return null
+
+    if (input.promoCode) {
+      const reserved = await reservePromocode(client, input.promoCode, found.price, found.currency)
+
+      if ('error' in reserved) {
+        const status = reserved.error === 'promo_not_found' ? 404 : 409
+        throw new OrderError(status, reserved.error, `Promo code ${input.promoCode} is not usable`)
+      }
+
+      await client.query('update orders set discount = $2, promo_code = $3 where id = $1', [
+        orderId,
+        reserved.discount,
+        input.promoCode
+      ])
+
+      await client.query('insert into promocode_uses (order_id, code) values ($1, $2)', [
+        orderId,
+        input.promoCode
+      ])
+    }
+
+    return orderId
+  }, pool)
+
+  const { rows } = createdId
+    ? await pool.query<OrderRow>(`${SELECT_ORDER} where o.id = $1`, [createdId])
     : await pool.query<OrderRow>(`${SELECT_ORDER} where o.idempotency_key = $1`, [
         input.idempotencyKey
       ])
@@ -98,7 +122,15 @@ export async function createOrder(
     throw new OrderError(500, 'internal_error', 'Order disappeared right after insert')
   }
 
-  return { order: toOrder(row), created: Boolean(orderId) }
+  if (!createdId && (row.sku !== input.sku || (row.promo_code ?? undefined) !== input.promoCode)) {
+    throw new OrderError(
+      409,
+      'conflict',
+      'Idempotency key was already used with different parameters'
+    )
+  }
+
+  return { order: toOrder(row), created: Boolean(createdId) }
 }
 
 export async function getOrder(pool: pg.Pool, id: string): Promise<Order> {

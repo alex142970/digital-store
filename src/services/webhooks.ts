@@ -2,6 +2,8 @@ import type pg from 'pg'
 import { withTransaction } from '../db/pool.ts'
 import type { components } from '../types/api.d.ts'
 import { deliverOrder } from './delivery.ts'
+import { RESUMABLE } from './order-status.ts'
+import { releasePromocode } from './promocodes.ts'
 
 export type PaymentWebhook = components['schemas']['PaymentWebhook']
 export type WebhookResult = components['schemas']['WebhookAccepted']
@@ -13,8 +15,6 @@ type PendingEvent = {
   currency: string
   occurred_at: Date
 }
-
-const RESUMABLE = ['paid', 'out_of_stock', 'delivery_failed']
 
 export async function receivePayment(pool: pg.Pool, event: PaymentWebhook): Promise<WebhookResult> {
   await pool.query(
@@ -63,7 +63,7 @@ export async function applyPending(pool: pg.Pool, orderId: string): Promise<Webh
 
     const appliedUntil = lastApplied.rows[0]?.occurred_at ?? null
     let status = current.status
-    let deliver = RESUMABLE.includes(status)
+    let deliver = RESUMABLE.includes(status as (typeof RESUMABLE)[number])
 
     for (const event of pending.rows) {
       const stale = appliedUntil !== null && event.occurred_at < appliedUntil
@@ -72,23 +72,41 @@ export async function applyPending(pool: pg.Pool, orderId: string): Promise<Webh
         const amountMatches = event.amount === expectedTotal && event.currency === expectedCurrency
 
         if (!amountMatches) {
-          await client.query(
+          const rejected = await client.query(
             `update orders set status = 'payment_failed',
                     failure_reason = 'payment amount does not match the order'
              where id = $1 and status = 'created'`,
             [orderId]
           )
-          status = 'payment_failed'
+
+          if ((rejected.rowCount ?? 0) > 0) {
+            await releasePromocode(client, orderId)
+            status = 'payment_failed'
+          }
         } else if (status === 'created' || status === 'payment_failed') {
-          await client.query(`update orders set status = 'paid' where id = $1`, [orderId])
-          status = 'paid'
-          deliver = true
+          const accepted = await client.query(
+            `update orders set status = 'paid'
+             where id = $1 and status in ('created', 'payment_failed')`,
+            [orderId]
+          )
+
+          if ((accepted.rowCount ?? 0) > 0) {
+            status = 'paid'
+            deliver = true
+          }
         }
       }
 
       if (!stale && event.status === 'failed' && status === 'created') {
-        await client.query(`update orders set status = 'payment_failed' where id = $1`, [orderId])
-        status = 'payment_failed'
+        const failed = await client.query(
+          `update orders set status = 'payment_failed' where id = $1 and status = 'created'`,
+          [orderId]
+        )
+
+        if ((failed.rowCount ?? 0) > 0) {
+          await releasePromocode(client, orderId)
+          status = 'payment_failed'
+        }
       }
 
       await client.query('update webhook_events set applied_at = now() where event_id = $1', [

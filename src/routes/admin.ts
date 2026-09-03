@@ -3,13 +3,12 @@ import type { FastifyInstance } from 'fastify'
 import { config } from '../config.ts'
 import { ref } from '../openapi.ts'
 import { deliverOrder } from '../services/delivery.ts'
+import { UNFINISHED } from '../services/order-status.ts'
 import { getOrder } from '../services/orders.ts'
 import type { components } from '../types/api.d.ts'
 
 type RestockRequest = components['schemas']['RestockRequest']
 type Order = components['schemas']['Order']
-
-const STUCK = ['paid', 'delivering', 'out_of_stock', 'delivery_failed']
 
 const digest = (value: string) => createHash('sha256').update(value).digest()
 
@@ -49,7 +48,7 @@ export default async function adminRoutes(app: FastifyInstance) {
         `select o.id from orders o
          where not $1::boolean or o.status = any($2::text[])
          order by o.updated_at`,
-        [stuckOnly, STUCK]
+        [stuckOnly, UNFINISHED]
       )
 
       const orders: Order[] = []

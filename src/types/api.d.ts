@@ -211,6 +211,7 @@ export interface components {
         };
         CreateOrderRequest: {
             sku: string;
+            promoCode?: string;
             idempotencyKey: string;
         };
         PayRequest: {
@@ -245,7 +246,7 @@ export interface components {
         };
         Error: {
             /** @enum {string} */
-            error: "validation_error" | "not_found" | "unauthorized" | "conflict" | "promo_limit_reached" | "promo_not_found" | "product_not_found" | "order_not_payable" | "rate_limited" | "internal_error";
+            error: "validation_error" | "not_found" | "unauthorized" | "conflict" | "promo_limit_reached" | "promo_not_found" | "promo_currency_mismatch" | "product_not_found" | "order_not_payable" | "rate_limited" | "internal_error";
             message: string;
         };
         Health: {
@@ -408,6 +409,15 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
+            /** @description Промокод исчерпан или не применим */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getOrder: {

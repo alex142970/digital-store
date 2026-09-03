@@ -1,5 +1,6 @@
 import type pg from 'pg'
 import { withTransaction } from '../db/pool.ts'
+import { DELIVERABLE } from './order-status.ts'
 import { issueCode, type IssueOutcome } from './providers.ts'
 
 export type DeliveryOutcome =
@@ -9,8 +10,6 @@ export type DeliveryOutcome =
   | 'out_of_stock'
   | 'delivery_failed'
   | 'not_found'
-
-const DELIVERABLE = ['paid', 'out_of_stock', 'delivery_failed']
 
 const requestIdFor = (orderId: string) => `req_${orderId}`
 
@@ -76,7 +75,7 @@ export async function deliverOrder(pool: pg.Pool, orderId: string): Promise<Deli
     if (!current) return null
     if (current.status === 'delivered') return 'already_delivered'
     if (current.status === 'delivering') return 'in_progress'
-    if (!DELIVERABLE.includes(current.status)) return null
+    if (!DELIVERABLE.includes(current.status as (typeof DELIVERABLE)[number])) return null
 
     await client.query(
       `update orders set status = 'delivering', failure_reason = null where id = $1`,

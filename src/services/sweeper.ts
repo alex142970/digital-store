@@ -2,8 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { config } from '../config.ts'
 import { withTransaction } from '../db/pool.ts'
 import { deliverOrder } from './delivery.ts'
-
-const RESUMABLE = ['paid', 'delivering', 'out_of_stock', 'delivery_failed']
+import { UNFINISHED } from './order-status.ts'
 
 async function claimStuckOrders(app: FastifyInstance): Promise<string[]> {
   return withTransaction(async (client) => {
@@ -14,7 +13,7 @@ async function claimStuckOrders(app: FastifyInstance): Promise<string[]> {
        order by updated_at
        limit 20
        for update skip locked`,
-      [RESUMABLE, config.DELIVERY_STUCK_AFTER_MS]
+      [UNFINISHED, config.DELIVERY_STUCK_AFTER_MS]
     )
 
     for (const row of rows) {

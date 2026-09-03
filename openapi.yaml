@@ -88,6 +88,12 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: Промокод исчерпан или не применим
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /api/orders/{orderId}:
     get:
@@ -408,6 +414,10 @@ components:
         sku:
           type: string
           minLength: 1
+        promoCode:
+          type: string
+          minLength: 1
+          maxLength: 64
         idempotencyKey:
           type: string
           minLength: 8
@@ -494,6 +504,7 @@ components:
             - conflict
             - promo_limit_reached
             - promo_not_found
+            - promo_currency_mismatch
             - product_not_found
             - order_not_payable
             - rate_limited

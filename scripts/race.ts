@@ -84,6 +84,12 @@ const stats = async (orderId: string): Promise<Stats> => {
 
 const cleanup = async () => {
   await pool.query(
+    'delete from promocode_uses where order_id in (select id from orders where sku = $1)',
+    [SKU]
+  )
+  await pool.query("delete from promocodes where code = 'RACELIMIT3'")
+  await pool.query("delete from provider_issues where request_id like 'req_ord_%'")
+  await pool.query(
     'delete from deliveries where order_id in (select id from orders where sku = $1)',
     [SKU]
   )
@@ -268,6 +274,36 @@ const run = async () => {
       failedResponses: retries.filter((r) => r.status !== 200).length
     },
     countOrderStates(afterRestock)
+  )
+  await resetFixture(CONCURRENCY)
+  await pool.query(
+    `insert into promocodes (code, type, value, max_uses)
+     values ('RACELIMIT3', 'percent', 25, 3)
+     on conflict (code) do update set used_count = 0, max_uses = 3`
+  )
+  const promoAttempts = await Promise.all(
+    Array.from({ length: CONCURRENCY }, (_, i) =>
+      post('/api/orders', {
+        sku: SKU,
+        idempotencyKey: `race-promo-${i}`,
+        promoCode: 'RACELIMIT3'
+      })
+    )
+  )
+  const promoUsed = await pool.query<{ used: number; uses: number }>(
+    `select (select used_count from promocodes where code = 'RACELIMIT3') as used,
+            (select count(*)::int from promocode_uses where code = 'RACELIMIT3') as uses`
+  )
+  check(
+    '[ТЗ 5] промокод с лимитом 3 под параллельными запросами: применён ровно 3 раза',
+    { created: 3, rejected: CONCURRENCY - 3, used: 3, uses: 3 },
+    {
+      created: promoAttempts.filter((r) => r.status === 201).length,
+      rejected: promoAttempts.filter((r) => r.status === 409).length,
+      used: promoUsed.rows[0]?.used,
+      uses: promoUsed.rows[0]?.uses
+    },
+    countStatuses(promoAttempts)
   )
 }
 

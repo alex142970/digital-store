@@ -18,14 +18,16 @@ export default async function orderRoutes(app: FastifyInstance) {
           200: ref('Order'),
           201: ref('Order'),
           400: ref('Error'),
-          404: ref('Error')
+          404: ref('Error'),
+          409: ref('Error')
         }
       }
     },
     async (request, reply) => {
       const { order, created } = await createOrder(app.pool, {
         sku: request.body.sku,
-        idempotencyKey: request.body.idempotencyKey
+        idempotencyKey: request.body.idempotencyKey,
+        promoCode: request.body.promoCode
       })
 
       if (created) {

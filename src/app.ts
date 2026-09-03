@@ -65,6 +65,15 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
       return reply.status(error.status).send({ error: error.code, message: error.message })
     }
 
+    const pgCode = (error as unknown as { code?: string }).code
+
+    if (pgCode === '23514' || pgCode === '55P03' || pgCode === '40001') {
+      return reply.status(409).send({
+        error: 'conflict',
+        message: 'Conflicting concurrent request, please retry'
+      })
+    }
+
     const status = error.statusCode ?? 500
 
     if (status >= 500) {

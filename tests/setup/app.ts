@@ -27,7 +27,7 @@ export async function startApp(): Promise<TestContext> {
 
 export async function resetData(pool: pg.Pool): Promise<void> {
   await pool.query(
-    'truncate delivery_attempts, deliveries, promocode_uses, webhook_events, license_keys, orders'
+    'truncate delivery_attempts, deliveries, promocode_uses, promocodes, webhook_events, license_keys, orders'
   )
   await pool.query('truncate provider_issues')
   await seed(pool)
