@@ -140,6 +140,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/promocodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Промокоды с текущим расходом лимита */
+        get: operations["listPromocodes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/keys": {
         parameters: {
             query?: never;
@@ -184,6 +201,8 @@ export interface components {
             /** @enum {string} */
             type: "topup" | "key" | "subscription" | "giftcard";
             price: number;
+            /** @description Цена до скидки */
+            oldPrice?: number | null;
             currency: string;
             image?: string | null;
         };
@@ -246,7 +265,7 @@ export interface components {
         };
         Error: {
             /** @enum {string} */
-            error: "validation_error" | "not_found" | "unauthorized" | "conflict" | "promo_limit_reached" | "promo_not_found" | "promo_currency_mismatch" | "product_not_found" | "order_not_payable" | "rate_limited" | "internal_error";
+            error: "validation_error" | "not_found" | "conflict" | "promo_limit_reached" | "promo_not_found" | "promo_currency_mismatch" | "product_not_found" | "order_not_payable" | "rate_limited" | "internal_error";
             message: string;
         };
         Health: {
@@ -270,6 +289,16 @@ export interface components {
             sku: string;
             added: number;
             available: number;
+        };
+        Promocode: {
+            code: string;
+            /** @enum {string} */
+            type: "percent" | "amount";
+            value: number;
+            currency: string | null;
+            maxUses: number;
+            usedCount: number;
+            remaining: number;
         };
         OrderIdParams: {
             orderId: string;
@@ -299,15 +328,6 @@ export interface components {
         };
         /** @description Не найдено */
         NotFound: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["Error"];
-            };
-        };
-        /** @description Нужен админский токен */
-        Unauthorized: {
             headers: {
                 [name: string]: unknown;
             };
@@ -581,7 +601,28 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listPromocodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Список промокодов */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        promocodes: components["schemas"]["Promocode"][];
+                    };
+                };
+            };
         };
     };
     restockKeys: {
@@ -607,7 +648,6 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -632,7 +672,6 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             /** @description Заказ нельзя выдать в текущем статусе */
             409: {

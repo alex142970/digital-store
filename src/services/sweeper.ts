@@ -3,6 +3,7 @@ import { config } from '../config.ts'
 import { withTransaction } from '../db/pool.ts'
 import { deliverOrder } from './delivery.ts'
 import { UNFINISHED } from './order-status.ts'
+import { releasePromocode } from './promocodes.ts'
 
 async function claimStuckOrders(app: FastifyInstance): Promise<string[]> {
   return withTransaction(async (client) => {
@@ -30,6 +31,37 @@ async function claimStuckOrders(app: FastifyInstance): Promise<string[]> {
   }, app.pool)
 }
 
+async function expireAbandonedOrders(app: FastifyInstance): Promise<number> {
+  return withTransaction(async (client) => {
+    const { rows } = await client.query<{ id: string }>(
+      `select id from orders
+       where status = 'created'
+         and created_at < now() - ($1::int * interval '1 millisecond')
+       order by created_at
+       limit 50
+       for update skip locked`,
+      [config.ORDER_EXPIRES_AFTER_MS]
+    )
+
+    let expired = 0
+
+    for (const row of rows) {
+      const updated = await client.query(
+        `update orders set status = 'payment_failed', failure_reason = 'order expired before payment'
+         where id = $1 and status = 'created'`,
+        [row.id]
+      )
+
+      if ((updated.rowCount ?? 0) > 0) {
+        await releasePromocode(client, row.id)
+        expired += 1
+      }
+    }
+
+    return expired
+  }, app.pool)
+}
+
 export function startDeliverySweeper(app: FastifyInstance): () => void {
   if (config.DELIVERY_SWEEP_INTERVAL_MS === 0) return () => {}
 
@@ -40,6 +72,12 @@ export function startDeliverySweeper(app: FastifyInstance): () => void {
     running = true
 
     try {
+      const expired = await expireAbandonedOrders(app)
+
+      if (expired > 0) {
+        app.log.info({ count: expired }, 'sweeper expired abandoned orders')
+      }
+
       const ids = await claimStuckOrders(app)
 
       for (const id of ids) {

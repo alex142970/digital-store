@@ -1,0 +1,194 @@
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background: #f4f6f9;
+  color: #1a1d21;
+  font:
+    15px/1.5 system-ui,
+    sans-serif;
+}
+
+.admin {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+.admin h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+
+.admin h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.admin__hint {
+  margin: 0 0 24px;
+  color: #55606e;
+}
+
+.admin__hint code {
+  background: #e7ebf1;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.admin__restock {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #dde3ea;
+  border-radius: 8px;
+}
+
+.admin__restock label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  max-width: 420px;
+  font-weight: 600;
+}
+
+.admin input,
+.admin textarea {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid #c7d0da;
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+}
+
+.admin textarea {
+  resize: vertical;
+}
+
+.admin button {
+  font: inherit;
+  font-weight: 600;
+  padding: 8px 14px;
+  border: 1px solid #1a1d21;
+  border-radius: 6px;
+  background: #1a1d21;
+  color: #fff;
+  cursor: pointer;
+}
+
+.admin button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.admin__section {
+  margin-top: 32px;
+}
+
+.admin__head {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.admin__message {
+  margin: 16px 0 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #e7f2e7;
+  border: 1px solid #b6d7b6;
+}
+
+.admin__message[data-kind='error'] {
+  background: #fbe9e9;
+  border-color: #e2b4b4;
+}
+
+.admin__table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border: 1px solid #dde3ea;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.admin__table th,
+.admin__table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #eef1f5;
+  vertical-align: top;
+}
+
+.admin__table th {
+  background: #f0f3f7;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.admin__table tr:last-child td {
+  border-bottom: 0;
+}
+
+.admin__status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e7ebf1;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin__reason {
+  display: block;
+  margin-top: 4px;
+  color: #8a3232;
+  font-size: 13px;
+}
+
+.admin__filter {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.admin__filter button {
+  background: #fff;
+  color: #1a1d21;
+  border-color: #c7d0da;
+  font-weight: 500;
+}
+
+.admin__filter button[aria-pressed='true'] {
+  background: #1a1d21;
+  border-color: #1a1d21;
+  color: #fff;
+  font-weight: 600;
+}
+
+.admin__note {
+  margin: 0 0 12px;
+  color: #55606e;
+  font-size: 14px;
+}
+
+.admin__status[data-status='delivered'] {
+  background: #d8efd8;
+}
+
+.admin__status[data-status='out_of_stock'],
+.admin__status[data-status='delivery_failed'],
+.admin__status[data-status='payment_failed'] {
+  background: #f6dcdc;
+}

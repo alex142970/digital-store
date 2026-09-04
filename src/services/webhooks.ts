@@ -16,7 +16,11 @@ type PendingEvent = {
   occurred_at: Date
 }
 
-export async function receivePayment(pool: pg.Pool, event: PaymentWebhook): Promise<WebhookResult> {
+export async function receivePayment(
+  pool: pg.Pool,
+  event: PaymentWebhook,
+  options: { awaitDelivery?: boolean } = {}
+): Promise<WebhookResult> {
   await pool.query(
     `insert into webhook_events (event_id, order_id, status, occurred_at, payload)
      values ($1, $2, $3, $4, $5)
@@ -24,10 +28,14 @@ export async function receivePayment(pool: pg.Pool, event: PaymentWebhook): Prom
     [event.event_id, event.order_id, event.status, event.created_at, event]
   )
 
-  return applyPending(pool, event.order_id)
+  return applyPending(pool, event.order_id, options)
 }
 
-export async function applyPending(pool: pg.Pool, orderId: string): Promise<WebhookResult> {
+export async function applyPending(
+  pool: pg.Pool,
+  orderId: string,
+  options: { awaitDelivery?: boolean } = {}
+): Promise<WebhookResult> {
   const shouldDeliver = await withTransaction(async (client) => {
     const order = await client.query<{ status: string; amount: number; discount: number }>(
       'select status, amount, discount from orders where id = $1 for update',
@@ -83,10 +91,9 @@ export async function applyPending(pool: pg.Pool, orderId: string): Promise<Webh
             await releasePromocode(client, orderId)
             status = 'payment_failed'
           }
-        } else if (status === 'created' || status === 'payment_failed') {
+        } else if (status === 'created') {
           const accepted = await client.query(
-            `update orders set status = 'paid'
-             where id = $1 and status in ('created', 'payment_failed')`,
+            `update orders set status = 'paid' where id = $1 and status = 'created'`,
             [orderId]
           )
 
@@ -118,7 +125,9 @@ export async function applyPending(pool: pg.Pool, orderId: string): Promise<Webh
   }, pool)
 
   if (shouldDeliver) {
-    await deliverOrder(pool, orderId)
+    if (options.awaitDelivery) await deliverOrder(pool, orderId)
+    else void deliverOrder(pool, orderId).catch(() => {})
+
     return { accepted: true, deferred: false }
   }
 

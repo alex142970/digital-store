@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Статус заказа — Digital Store</title>
+    <meta name="robots" content="noindex" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles/main.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#order-status">Перейти к содержимому</a>
+
+    <header class="header">
+      <div class="container header__inner">
+        <a class="header__logo" href="/">Digital Store</a>
+      </div>
+    </header>
+
+    <main class="container">
+      <h1 class="visually-hidden">Статус заказа</h1>
+      <section class="status" id="order-status" data-order>
+        <p>Загружаем заказ…</p>
+      </section>
+    </main>
+
+    <script type="module" src="/js/order.js"></script>
+  </body>
+</html>

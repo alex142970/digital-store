@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Админка — Digital Store</title>
+    <meta name="robots" content="noindex" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles/admin.css" />
+  </head>
+  <body>
+    <main class="admin">
+      <h1>Админка</h1>
+
+      <p class="admin__message" data-message hidden></p>
+
+      <section class="admin__section">
+        <div class="admin__head">
+          <h2>Заказы</h2>
+          <button type="button" data-refresh>Обновить</button>
+        </div>
+
+        <div class="admin__filter" role="group" aria-label="Фильтр заказов">
+          <button type="button" data-filter="stuck" aria-pressed="true">
+            Оплачен, но не выдан
+          </button>
+          <button type="button" data-filter="all" aria-pressed="false">Все заказы</button>
+        </div>
+
+        <p class="admin__note" data-note></p>
+
+        <div data-orders>
+          <p>Загружаем заказы…</p>
+        </div>
+      </section>
+
+      <section class="admin__section">
+        <div class="admin__head">
+          <h2>Промокоды</h2>
+        </div>
+        <p class="admin__note">Лимит использований и текущий расход. Скидку считает сервер.</p>
+        <div data-promocodes>
+          <p>Загружаем промокоды…</p>
+        </div>
+      </section>
+
+      <section class="admin__section">
+        <h2>Пополнить пул ключей</h2>
+        <form class="admin__restock" data-restock-form>
+          <label>
+            SKU
+            <input type="text" name="sku" placeholder="KEY-CS2-PRIME" required />
+          </label>
+          <label>
+            Ключи (по одному в строке)
+            <textarea name="keys" rows="4" placeholder="AAAA-BBBB-CCCC" required></textarea>
+          </label>
+          <button type="submit" data-restock-submit>Добавить ключи</button>
+        </form>
+      </section>
+    </main>
+
+    <script type="module" src="/js/admin.js"></script>
+  </body>
+</html>

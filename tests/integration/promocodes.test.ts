@@ -300,3 +300,30 @@ test('client cannot smuggle the discount base into the order body', async () => 
   const { rows } = await ctx.pool.query('select count(*)::int as orders from orders')
   expect(rows[0].orders).toBe(0)
 })
+
+test('admin promocode list reports limits and current usage', async () => {
+  const before = await ctx.app.inject({ method: 'GET', url: '/api/admin/promocodes' })
+  expect(before.statusCode).toBe(200)
+
+  const onceOnly = before.json().promocodes.find((p: { code: string }) => p.code === 'ONCEONLY')
+  expect(onceOnly).toMatchObject({
+    code: 'ONCEONLY',
+    type: 'percent',
+    value: 50,
+    maxUses: 1,
+    usedCount: 0,
+    remaining: 1
+  })
+
+  const created = await ctx.app.inject({
+    method: 'POST',
+    url: '/api/orders',
+    payload: { sku: 'KEY-CS2-PRIME', idempotencyKey: 'promo-list-1', promoCode: 'ONCEONLY' }
+  })
+  expect(created.statusCode).toBe(201)
+
+  const after = await ctx.app.inject({ method: 'GET', url: '/api/admin/promocodes' })
+  const spent = after.json().promocodes.find((p: { code: string }) => p.code === 'ONCEONLY')
+
+  expect(spent).toMatchObject({ usedCount: 1, remaining: 0 })
+})

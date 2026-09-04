@@ -10,8 +10,6 @@ import {
 
 let ctx: TestContext
 
-const auth = { authorization: 'Bearer test-admin-token' }
-
 beforeAll(async () => {
   ctx = await startApp()
 })
@@ -35,8 +33,7 @@ test('stuck list shows paid but undelivered orders only', async () => {
 
   const response = await ctx.app.inject({
     method: 'GET',
-    url: '/api/admin/orders',
-    headers: auth
+    url: '/api/admin/orders'
   })
 
   const ids = response.json().orders.map((order: { id: string }) => order.id)
@@ -52,7 +49,6 @@ test('restock adds keys and reports availability', async () => {
   const response = await ctx.app.inject({
     method: 'POST',
     url: '/api/admin/keys',
-    headers: auth,
     payload: { sku: 'KEY-CS2-PRIME', keys: ['ADMN-0001-0001', 'ADMN-0002-0002'] }
   })
 
@@ -70,14 +66,12 @@ test('restock then retry delivers exactly one key and repeated retry is a no-op'
   await ctx.app.inject({
     method: 'POST',
     url: '/api/admin/keys',
-    headers: auth,
     payload: { sku: 'KEY-CS2-PRIME', keys: ['ADMN-RTRY-0001'] }
   })
 
   const first = await ctx.app.inject({
     method: 'POST',
-    url: `/api/admin/orders/${order.id}/retry`,
-    headers: auth
+    url: `/api/admin/orders/${order.id}/retry`
   })
 
   expect(first.statusCode).toBe(200)
@@ -85,8 +79,7 @@ test('restock then retry delivers exactly one key and repeated retry is a no-op'
 
   const second = await ctx.app.inject({
     method: 'POST',
-    url: `/api/admin/orders/${order.id}/retry`,
-    headers: auth
+    url: `/api/admin/orders/${order.id}/retry`
   })
 
   expect(second.json()).toMatchObject({ status: 'delivered', code: 'ADMN-RTRY-0001' })
@@ -97,16 +90,4 @@ test('restock then retry delivers exactly one key and repeated retry is a no-op'
     [order.id]
   )
   expect(rows[0]).toEqual({ deliveries: 1, used: 1 })
-})
-
-test('admin endpoints reject requests without a token', async () => {
-  const list = await ctx.app.inject({ method: 'GET', url: '/api/admin/orders' })
-  const restock = await ctx.app.inject({
-    method: 'POST',
-    url: '/api/admin/keys',
-    payload: { sku: 'KEY-CS2-PRIME', keys: ['X'] }
-  })
-
-  expect(list.statusCode).toBe(401)
-  expect(restock.statusCode).toBe(401)
 })

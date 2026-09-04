@@ -21,7 +21,6 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 const ERROR_CODE_BY_STATUS: Record<number, string> = {
   400: 'validation_error',
-  401: 'unauthorized',
   404: 'not_found',
   409: 'conflict',
   429: 'rate_limited'
@@ -49,7 +48,21 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     trustProxy: config.TRUST_PROXY
   })
 
-  await app.register(fastifyHelmet, { contentSecurityPolicy: false })
+  await app.register(fastifyHelmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+        imgSrc: ["'self'"],
+        connectSrc: ["'self'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'none'"]
+      }
+    }
+  })
   await app.register(fastifyCompress, { global: true, threshold: 4096 })
   await app.register(fastifyRateLimit, {
     max: 1200,
@@ -100,7 +113,11 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   await app.register(providerRoutes)
   await app.register(adminRoutes)
 
-  await app.register(fastifyStatic, { root: join(ROOT, 'public'), prefix: '/' })
+  await app.register(fastifyStatic, {
+    root: join(ROOT, 'public'),
+    prefix: '/',
+    maxAge: config.NODE_ENV === 'production' ? '1h' : 0
+  })
 
   app.get('/api/health', async (_request, reply) => {
     try {

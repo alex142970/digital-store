@@ -7,6 +7,7 @@ import {
   resetData,
   sendWebhook,
   startApp,
+  waitForStatus,
   type TestContext
 } from '../setup/app.ts'
 
@@ -33,6 +34,8 @@ test('fifty concurrent webhooks deliver exactly one key', async () => {
   )
 
   expect(responses.every((r) => r.statusCode === 200)).toBe(true)
+
+  await waitForStatus(ctx, order.id, ['delivered'])
 
   const { rows } = await ctx.pool.query(
     `select (select count(*) from deliveries)::int as deliveries,

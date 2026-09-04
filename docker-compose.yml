@@ -22,7 +22,6 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://store:store@db:5432/store
-      ADMIN_TOKEN: ${ADMIN_TOKEN:-local-dev-admin-token}
       PORT: 3000
     ports:
       - '127.0.0.1:3000:3000'

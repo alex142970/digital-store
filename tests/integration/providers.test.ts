@@ -182,10 +182,80 @@ test('delivery recovers after providers come back', async () => {
 
   const retry = await ctx.app.inject({
     method: 'POST',
-    url: `/api/admin/orders/${order.id}/retry`,
-    headers: { authorization: 'Bearer test-admin-token' }
+    url: `/api/admin/orders/${order.id}/retry`
   })
 
   expect(retry.statusCode).toBe(200)
   expect(retry.json().status).toBe('delivered')
+})
+
+test('provider refuses to issue a key for a sku that does not belong to the order', async () => {
+  const order = (await createOrder(ctx, 'sku-mismatch-1')).json()
+  expect(order.sku).toBe('KEY-CS2-PRIME')
+
+  const response = await ctx.app.inject({
+    method: 'POST',
+    url: '/internal/providers/a/issue',
+    payload: { request_id: `req_${order.id}`, sku: 'KEY-GTA5', order_id: order.id }
+  })
+
+  expect(response.statusCode).toBe(409)
+  expect(response.json().reason).toBe('sku does not match the order')
+
+  const leaked = await ctx.pool.query(
+    'select 1 from license_keys where order_id = $1 and sku <> $2',
+    [order.id, order.sku]
+  )
+  expect(leaked.rowCount).toBe(0)
+})
+
+test('delivery ignores a key reserved for a different sku', async () => {
+  const order = (await createOrder(ctx, 'sku-mismatch-2')).json()
+
+  await ctx.pool.query(
+    `update license_keys set order_id = $1, issued_at = now()
+     where id = (select id from license_keys where sku = 'KEY-GTA5' and order_id is null limit 1)`,
+    [order.id]
+  )
+
+  await pay(ctx, order.id)
+
+  const delivered = (await fetchOrder(ctx, order.id)).json()
+
+  if (delivered.code !== null) {
+    const { rows } = await ctx.pool.query<{ sku: string }>(
+      'select sku from license_keys where code = $1',
+      [delivered.code]
+    )
+    expect(rows[0]?.sku).toBe(order.sku)
+  }
+})
+
+test('concurrent repeats of one request_id all get the same code and burn one key', async () => {
+  const order = (await createOrder(ctx, 'same-request-id-1')).json()
+
+  const responses = await Promise.all(
+    Array.from({ length: 20 }, () =>
+      ctx.app.inject({
+        method: 'POST',
+        url: '/internal/providers/a/issue',
+        payload: { request_id: `req_${order.id}`, sku: order.sku, order_id: order.id }
+      })
+    )
+  )
+
+  const codes = new Set(
+    responses.filter((r) => r.statusCode === 200).map((r) => r.json().code as string)
+  )
+
+  expect(codes.size).toBe(1)
+  expect(responses.some((r) => r.statusCode === 409)).toBe(false)
+
+  const { rows } = await ctx.pool.query<{ used: number; issues: number }>(
+    `select (select count(*)::int from license_keys where order_id = $1) as used,
+            (select count(*)::int from provider_issues where request_id = $2) as issues`,
+    [order.id, `req_${order.id}`]
+  )
+
+  expect(rows[0]).toEqual({ used: 1, issues: 1 })
 })

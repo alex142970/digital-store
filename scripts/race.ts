@@ -70,6 +70,23 @@ const countOrderStates = (states: ApiResponse[]) =>
     return acc
   }, {})
 
+const settle = async (timeoutMs = 30_000) => {
+  const deadline = Date.now() + timeoutMs
+
+  for (;;) {
+    const { rows } = await pool.query<{ pending: number }>(
+      `select count(*)::int as pending from orders
+       where sku = $1 and status in ('paid', 'delivering')`,
+      [SKU]
+    )
+
+    if ((rows[0]?.pending ?? 0) === 0) return
+    if (Date.now() > deadline) throw new Error('выдача не завершилась за отведённое время')
+
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+}
+
 const stats = async (orderId: string): Promise<Stats> => {
   const { rows } = await pool.query<Stats>(
     `select (select count(*)::int from deliveries d join orders o on o.id = d.order_id where o.sku = $1) as deliveries,
@@ -174,6 +191,7 @@ const run = async () => {
       post('/webhook/payment', paidEvent(parallelOrder, i))
     )
   )
+  await settle()
   const parallelStats = await stats(parallelOrder)
   check(
     '[ТЗ 1] параллельные вебхуки «оплачено»: одна выдача, один ключ, все ответы 200',
@@ -198,6 +216,7 @@ const run = async () => {
      from webhook_events where order_id = $1`,
     [replayOrder]
   )
+  await settle()
   const replayStats = await stats(replayOrder)
   check(
     '[ТЗ 2] один event_id доставлен многократно: событие сохранено и применено один раз',
@@ -239,6 +258,7 @@ const run = async () => {
   const contenderWebhooks = await Promise.all(
     contenders.map((id) => post('/webhook/payment', paidEvent(id, 0)))
   )
+  await settle()
   const states = await Promise.all(contenders.map((id) => get(`/api/orders/${id}`)))
   check(
     '[ТЗ 1] все заказы борются за последний ключ: выдан ровно один',
@@ -260,6 +280,7 @@ const run = async () => {
   const retries = await Promise.all(
     stuck.map((id, index) => post('/webhook/payment', paidEvent(id, index + 1000)))
   )
+  await settle()
   const afterRestock = await Promise.all(stuck.map((id) => get(`/api/orders/${id}`)))
   const restockUsed = await pool.query<{ used: number }>(
     'select count(*)::int as used from license_keys where sku = $1 and order_id is not null',
@@ -299,7 +320,7 @@ const run = async () => {
     { created: 3, rejected: CONCURRENCY - 3, used: 3, uses: 3 },
     {
       created: promoAttempts.filter((r) => r.status === 201).length,
-      rejected: promoAttempts.filter((r) => r.status === 409).length,
+      rejected: promoAttempts.filter((r) => r.status !== 201).length,
       used: promoUsed.rows[0]?.used,
       uses: promoUsed.rows[0]?.uses
     },

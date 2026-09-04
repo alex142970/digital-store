@@ -31,7 +31,7 @@ export default async function orderRoutes(app: FastifyInstance) {
       })
 
       if (created) {
-        await applyPending(app.pool, order.id)
+        await applyPending(app.pool, order.id, { awaitDelivery: true })
         return reply.status(201).send(await getOrder(app.pool, order.id))
       }
 
@@ -73,7 +73,7 @@ export default async function orderRoutes(app: FastifyInstance) {
       }
 
       const event = await buildPaymentEvent(app.pool, order.id, request.body.outcome)
-      await receivePayment(app.pool, event)
+      await receivePayment(app.pool, event, { awaitDelivery: true })
 
       return reply.status(202).send({ eventId: event.event_id })
     }

@@ -1,4 +1,17 @@
 services:
+  init:
+    image: ghcr.io/alex142970/digital-store:latest
+    restart: 'no'
+    command: ['sh', '-c', 'node src/db/migrate.ts && node src/db/seed.ts']
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://store:${POSTGRES_PASSWORD:?}@db:5432/store
+      LOG_LEVEL: info
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [internal]
+
   app:
     image: ghcr.io/alex142970/digital-store:latest
     restart: unless-stopped
@@ -6,12 +19,13 @@ services:
       NODE_ENV: production
       PORT: 3000
       DATABASE_URL: postgres://store:${POSTGRES_PASSWORD:?}@db:5432/store
-      ADMIN_TOKEN: ${ADMIN_TOKEN:?}
       TRUST_PROXY: 172.16.0.0/12
       LOG_LEVEL: info
     depends_on:
       db:
         condition: service_healthy
+      init:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [

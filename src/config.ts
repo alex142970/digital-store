@@ -16,7 +16,7 @@ const schema = z.object({
   PROVIDER_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
   DELIVERY_SWEEP_INTERVAL_MS: z.coerce.number().int().nonnegative().default(15_000),
   DELIVERY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(60_000),
-  ADMIN_TOKEN: z.string().min(8),
+  ORDER_EXPIRES_AFTER_MS: z.coerce.number().int().positive().default(1_800_000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info')
 })
 

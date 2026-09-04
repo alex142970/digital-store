@@ -22,7 +22,8 @@
       "type": "topup",
       "price": 2500,
       "currency": "RUB",
-      "image": "assets/steam.png"
+      "image": "assets/steam.png",
+      "old_price": 2790
     },
     {
       "sku": "KEY-CS2-PRIME",
@@ -30,7 +31,8 @@
       "type": "key",
       "price": 1290,
       "currency": "RUB",
-      "image": "assets/cs2.png"
+      "image": null,
+      "old_price": 1990
     },
     {
       "sku": "KEY-GTA5",
@@ -38,7 +40,8 @@
       "type": "key",
       "price": 1990,
       "currency": "RUB",
-      "image": "assets/gta5.png"
+      "image": null,
+      "old_price": 2990
     },
     {
       "sku": "KEY-EFT",
@@ -46,7 +49,8 @@
       "type": "key",
       "price": 3490,
       "currency": "RUB",
-      "image": "assets/eft.png"
+      "image": null,
+      "old_price": 4290
     },
     {
       "sku": "SUB-DISCORD-1M",
@@ -54,7 +58,8 @@
       "type": "subscription",
       "price": 399,
       "currency": "RUB",
-      "image": "assets/discord.png"
+      "image": null,
+      "old_price": 599
     },
     {
       "sku": "SUB-YT-3M",
@@ -62,7 +67,8 @@
       "type": "subscription",
       "price": 1490,
       "currency": "RUB",
-      "image": "assets/youtube.png"
+      "image": null,
+      "old_price": 1990
     },
     {
       "sku": "SUB-SPOTIFY-1M",
@@ -70,7 +76,7 @@
       "type": "subscription",
       "price": 299,
       "currency": "RUB",
-      "image": "assets/spotify.png"
+      "image": null
     },
     {
       "sku": "GIFT-PSN-1000",
@@ -86,7 +92,8 @@
       "type": "giftcard",
       "price": 1500,
       "currency": "RUB",
-      "image": "assets/xbox.png"
+      "image": null,
+      "old_price": 1790
     },
     {
       "sku": "GIFT-ROBLOX-800",
@@ -95,6 +102,32 @@
       "price": 890,
       "currency": "RUB",
       "image": "assets/roblox.png"
+    },
+    {
+      "sku": "KEY-RDR2",
+      "name": "Red Dead Redemption 2 ключ активации",
+      "type": "key",
+      "price": 1790,
+      "currency": "RUB",
+      "image": null,
+      "old_price": 2490
+    },
+    {
+      "sku": "SUB-TG-PREMIUM-3M",
+      "name": "Telegram Premium 3 месяца",
+      "type": "subscription",
+      "price": 990,
+      "currency": "RUB",
+      "image": "assets/telegram.png",
+      "old_price": 1290
+    },
+    {
+      "sku": "GIFT-APPSTORE-1000",
+      "name": "App Store карта 1000 ₽",
+      "type": "giftcard",
+      "price": 1050,
+      "currency": "RUB",
+      "image": "assets/appstore.png"
     }
   ]
 }

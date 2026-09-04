@@ -54,3 +54,38 @@ export const paidEvent = (orderId: string, overrides: Record<string, unknown> = 
   created_at: new Date().toISOString(),
   ...overrides
 })
+
+export async function waitForStatus(
+  ctx: TestContext,
+  orderId: string,
+  statuses: string[],
+  timeoutMs = 10_000
+): Promise<Record<string, unknown>> {
+  const deadline = Date.now() + timeoutMs
+
+  for (;;) {
+    const order = (await fetchOrder(ctx, orderId)).json()
+
+    if (statuses.includes(order.status)) return order
+    if (Date.now() > deadline) {
+      throw new Error(`order ${orderId} stayed ${order.status}, expected one of ${statuses}`)
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+}
+
+export async function settleDeliveries(ctx: TestContext, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+
+  for (;;) {
+    const { rows } = await ctx.pool.query<{ pending: number }>(
+      `select count(*)::int as pending from orders where status in ('paid', 'delivering')`
+    )
+
+    if ((rows[0]?.pending ?? 0) === 0) return
+    if (Date.now() > deadline) throw new Error('deliveries did not settle in time')
+
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+}

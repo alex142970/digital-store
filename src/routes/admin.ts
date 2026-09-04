@@ -1,6 +1,4 @@
-import { createHash, timingSafeEqual } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
-import { config } from '../config.ts'
 import { ref } from '../openapi.ts'
 import { deliverOrder } from '../services/delivery.ts'
 import { UNFINISHED } from '../services/order-status.ts'
@@ -9,22 +7,9 @@ import type { components } from '../types/api.d.ts'
 
 type RestockRequest = components['schemas']['RestockRequest']
 type Order = components['schemas']['Order']
-
-const digest = (value: string) => createHash('sha256').update(value).digest()
-
-const tokenMatches = (candidate: string) =>
-  timingSafeEqual(digest(config.ADMIN_TOKEN), digest(candidate))
+type Promocode = components['schemas']['Promocode']
 
 export default async function adminRoutes(app: FastifyInstance) {
-  app.addHook('onRequest', async (request, reply) => {
-    const header = request.headers.authorization ?? ''
-    const token = header.startsWith('Bearer ') ? header.slice(7) : ''
-
-    if (!tokenMatches(token)) {
-      return reply.status(401).send({ error: 'unauthorized', message: 'Admin token required' })
-    }
-  })
-
   app.get<{ Querystring: { state?: 'stuck' | 'all' } }>(
     '/api/admin/orders',
     {
@@ -36,8 +21,7 @@ export default async function adminRoutes(app: FastifyInstance) {
             required: ['orders'],
             properties: { orders: { type: 'array', items: ref('Order') } }
           },
-          400: ref('Error'),
-          401: ref('Error')
+          400: ref('Error')
         }
       }
     },
@@ -47,7 +31,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       const { rows } = await app.pool.query<{ id: string }>(
         `select o.id from orders o
          where not $1::boolean or o.status = any($2::text[])
-         order by o.updated_at`,
+         order by o.updated_at desc`,
         [stuckOnly, UNFINISHED]
       )
 
@@ -61,6 +45,31 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   )
 
+  app.get(
+    '/api/admin/promocodes',
+    {
+      schema: {
+        response: {
+          200: {
+            type: 'object',
+            required: ['promocodes'],
+            properties: { promocodes: { type: 'array', items: ref('Promocode') } }
+          }
+        }
+      }
+    },
+    async () => {
+      const { rows } = await app.pool.query<Promocode>(
+        `select code, type, value, currency, max_uses as "maxUses", used_count as "usedCount",
+                greatest(max_uses - used_count, 0) as remaining
+         from promocodes
+         order by code`
+      )
+
+      return { promocodes: rows }
+    }
+  )
+
   app.post<{ Params: { orderId: string } }>(
     '/api/admin/orders/:orderId/retry',
     {
@@ -68,7 +77,6 @@ export default async function adminRoutes(app: FastifyInstance) {
         params: ref('OrderIdParams'),
         response: {
           200: ref('Order'),
-          401: ref('Error'),
           404: ref('Error'),
           409: ref('Error')
         }
@@ -104,7 +112,6 @@ export default async function adminRoutes(app: FastifyInstance) {
         response: {
           201: ref('RestockResult'),
           400: ref('Error'),
-          401: ref('Error'),
           404: ref('Error')
         }
       }

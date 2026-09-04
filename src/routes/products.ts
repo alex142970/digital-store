@@ -22,7 +22,7 @@ export default async function productRoutes(app: FastifyInstance) {
     },
     async () => {
       const { rows } = await app.pool.query<Product>(
-        'select sku, name, type, price, currency, image from products order by price'
+        'select sku, name, type, price, currency, image, old_price as "oldPrice" from products order by price, sku'
       )
       return { products: rows }
     }

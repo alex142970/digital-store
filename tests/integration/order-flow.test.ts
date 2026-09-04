@@ -7,6 +7,7 @@ import {
   resetData,
   sendWebhook,
   startApp,
+  waitForStatus,
   type TestContext
 } from '../setup/app.ts'
 
@@ -83,10 +84,10 @@ test('repeated webhook is stored once and applied once', async () => {
   const event = paidEvent(order.id)
 
   await sendWebhook(ctx, event)
-  const afterFirst = (await fetchOrder(ctx, order.id)).json()
+  const afterFirst = await waitForStatus(ctx, order.id, ['delivered'])
 
   await sendWebhook(ctx, event)
-  const afterSecond = (await fetchOrder(ctx, order.id)).json()
+  const afterSecond = await waitForStatus(ctx, order.id, ['delivered'])
 
   expect(afterSecond.code).toBe(afterFirst.code)
 
@@ -150,8 +151,7 @@ test('empty pool leaves the order recoverable and delivery resumes after restock
 
   await sendWebhook(ctx, paidEvent(order.id))
 
-  const recovered = (await fetchOrder(ctx, order.id)).json()
-  expect(recovered.status).toBe('delivered')
+  const recovered = await waitForStatus(ctx, order.id, ['delivered'])
   expect(recovered.code).toBe('RSTK-0001-0001')
 })
 
@@ -171,7 +171,7 @@ test('event stored before the order is applied once the order appears', async ()
     [orderId]
   )
 
-  await applyPending(ctx.pool, orderId)
+  await applyPending(ctx.pool, orderId, { awaitDelivery: true })
 
   const delivered = (await fetchOrder(ctx, orderId)).json()
   expect(delivered.status).toBe('delivered')
@@ -181,6 +181,64 @@ test('event stored before the order is applied once the order appears', async ()
     "select applied_at from webhook_events where event_id = 'evt_before_order'"
   )
   expect(rows[0].applied_at).not.toBeNull()
+})
+
+test('webhook received over http before the order exists is deferred and later applied', async () => {
+  const orderId = 'ord_http_before_order'
+
+  const early = await ctx.app.inject({
+    method: 'POST',
+    url: '/webhook/payment',
+    payload: {
+      event_id: 'evt_http_before_order',
+      order_id: orderId,
+      status: 'paid',
+      amount: 1290,
+      currency: 'RUB',
+      created_at: new Date().toISOString()
+    }
+  })
+
+  expect(early.statusCode).toBe(200)
+  expect(early.json()).toEqual({ accepted: true, deferred: true })
+
+  const stored = await ctx.pool.query('select applied_at from webhook_events where event_id = $1', [
+    'evt_http_before_order'
+  ])
+  expect(stored.rowCount).toBe(1)
+  expect(stored.rows[0].applied_at).toBeNull()
+
+  await ctx.pool.query(
+    `insert into orders (id, sku, amount, idempotency_key)
+     values ($1, 'KEY-CS2-PRIME', 1290, 'http-before-order-key')`,
+    [orderId]
+  )
+
+  const late = await ctx.app.inject({
+    method: 'POST',
+    url: '/webhook/payment',
+    payload: {
+      event_id: 'evt_http_before_order',
+      order_id: orderId,
+      status: 'paid',
+      amount: 1290,
+      currency: 'RUB',
+      created_at: new Date().toISOString()
+    }
+  })
+
+  expect(late.statusCode).toBe(200)
+  expect(late.json()).toEqual({ accepted: true, deferred: false })
+
+  const delivered = await waitForStatus(ctx, orderId, ['delivered'])
+  expect(delivered.code).toBeTruthy()
+
+  const counts = await ctx.pool.query(
+    `select (select count(*)::int from webhook_events where event_id = $1) as events,
+            (select count(*)::int from deliveries where order_id = $2) as deliveries`,
+    ['evt_http_before_order', orderId]
+  )
+  expect(counts.rows[0]).toEqual({ events: 1, deliveries: 1 })
 })
 
 test('unpaid order never receives a key through the delivery service', async () => {

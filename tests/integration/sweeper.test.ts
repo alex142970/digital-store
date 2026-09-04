@@ -1,4 +1,5 @@
 process.env.DELIVERY_SWEEP_INTERVAL_MS = '50'
+process.env.ORDER_EXPIRES_AFTER_MS = '150'
 
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 
@@ -62,3 +63,62 @@ test('the sweeper unsticks an order abandoned in delivering and delivers it', as
   )
   expect(rows[0].used).toBe(1)
 }, 20000)
+
+test('abandoned unpaid order expires and gives its promo use back', async () => {
+  const created = await ctx.app.inject({
+    method: 'POST',
+    url: '/api/orders',
+    payload: { sku: 'KEY-CS2-PRIME', idempotencyKey: 'abandoned-promo-1', promoCode: 'ONCEONLY' }
+  })
+
+  expect(created.statusCode).toBe(201)
+  const order = created.json()
+  expect(order.discount).toBeGreaterThan(0)
+
+  const taken = await ctx.pool.query('select used_count from promocodes where code = $1', [
+    'ONCEONLY'
+  ])
+  expect(taken.rows[0].used_count).toBe(1)
+
+  await waitFor(async () => {
+    const { rows } = await ctx.pool.query('select status from orders where id = $1', [order.id])
+    return rows[0]?.status === 'payment_failed'
+  })
+
+  const released = await ctx.pool.query('select used_count from promocodes where code = $1', [
+    'ONCEONLY'
+  ])
+  expect(released.rows[0].used_count).toBe(0)
+
+  const reused = await ctx.app.inject({
+    method: 'POST',
+    url: '/api/orders',
+    payload: { sku: 'KEY-CS2-PRIME', idempotencyKey: 'abandoned-promo-2', promoCode: 'ONCEONLY' }
+  })
+
+  expect(reused.statusCode).toBe(201)
+  expect(reused.json().discount).toBeGreaterThan(0)
+})
+
+test('expired order can no longer be paid', async () => {
+  const created = await ctx.app.inject({
+    method: 'POST',
+    url: '/api/orders',
+    payload: { sku: 'KEY-GTA5', idempotencyKey: 'abandoned-pay-1' }
+  })
+
+  const order = created.json()
+
+  await waitFor(async () => {
+    const { rows } = await ctx.pool.query('select status from orders where id = $1', [order.id])
+    return rows[0]?.status === 'payment_failed'
+  })
+
+  const late = await ctx.app.inject({
+    method: 'POST',
+    url: `/api/orders/${order.id}/pay`,
+    payload: { outcome: 'success' }
+  })
+
+  expect(late.statusCode).toBe(409)
+})

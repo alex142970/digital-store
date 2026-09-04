@@ -45,7 +45,26 @@ export default async function providerRoutes(app: FastifyInstance) {
         return reply.status(503).send({ status: 'error', reason: 'provider unavailable' })
       }
 
+      const order = await app.pool.query<{ sku: string }>('select sku from orders where id = $1', [
+        order_id
+      ])
+
+      if (order.rowCount === 0 || order.rows[0]?.sku !== sku) {
+        return reply.status(409).send({ status: 'error', reason: 'sku does not match the order' })
+      }
+
       const issued = await withTransaction(async (client) => {
+        await client.query('select pg_advisory_xact_lock(hashtext($1))', [
+          `provider:${provider}:${request_id}`
+        ])
+
+        const repeated = await client.query<{ code: string }>(
+          'select code from provider_issues where provider = $1 and request_id = $2',
+          [provider, request_id]
+        )
+
+        if (repeated.rows[0]) return repeated.rows[0].code
+
         const key = await client.query<{ id: string; code: string }>(
           `select id, code from license_keys
            where sku = $1 and order_id is null

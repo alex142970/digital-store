@@ -31,7 +31,9 @@ async function completeDelivery(
 ): Promise<DeliveryOutcome> {
   return withTransaction(async (client) => {
     const key = await client.query<{ id: string }>(
-      'select id from license_keys where code = $1 and order_id = $2',
+      `select k.id from license_keys k
+       join orders o on o.id = k.order_id
+       where k.code = $1 and k.order_id = $2 and k.sku = o.sku`,
       [code, orderId]
     )
 
@@ -90,8 +92,8 @@ export async function deliverOrder(pool: pg.Pool, orderId: string): Promise<Deli
   if (claimed === 'in_progress') return 'in_progress'
 
   const reserved = await pool.query<{ code: string }>(
-    'select code from license_keys where order_id = $1',
-    [orderId]
+    'select code from license_keys where order_id = $1 and sku = $2',
+    [orderId, claimed]
   )
 
   const alreadyReserved = reserved.rows[0]?.code
