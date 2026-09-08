@@ -89,3 +89,22 @@ export async function settleDeliveries(ctx: TestContext, timeoutMs = 10_000): Pr
     await new Promise((resolve) => setTimeout(resolve, 25))
   }
 }
+
+export async function createOrderWithoutStock(
+  ctx: TestContext,
+  idempotencyKey: string,
+  sku = 'KEY-CS2-PRIME'
+): Promise<{ id: string }> {
+  await ctx.pool.query('delete from license_keys where sku = $1', [sku])
+  await ctx.pool.query(`insert into license_keys (sku, code) values ($1, $2)`, [
+    sku,
+    `STOCKLESS-${idempotencyKey}`
+  ])
+
+  const created = await createOrder(ctx, idempotencyKey, sku)
+  const order = created.json()
+
+  await ctx.pool.query('delete from license_keys where allocated_order_id = $1', [order.id])
+
+  return order
+}

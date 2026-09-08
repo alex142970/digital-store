@@ -17,10 +17,17 @@ const schema = z.object({
   DELIVERY_SWEEP_INTERVAL_MS: z.coerce.number().int().nonnegative().default(15_000),
   DELIVERY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(60_000),
   ORDER_EXPIRES_AFTER_MS: z.coerce.number().int().positive().default(1_800_000),
+  RESERVATION_TTL_MS: z.coerce.number().int().positive().default(300_000),
+  RESERVATION_SWEEP_INTERVAL_MS: z.coerce.number().int().nonnegative().default(2_000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info')
 })
 
-const parsed = schema.safeParse(process.env)
+const parsed = schema
+  .refine((c) => c.RESERVATION_TTL_MS < c.ORDER_EXPIRES_AFTER_MS, {
+    message: 'RESERVATION_TTL_MS must be shorter than ORDER_EXPIRES_AFTER_MS',
+    path: ['RESERVATION_TTL_MS']
+  })
+  .safeParse(process.env)
 
 if (!parsed.success) {
   const issues = parsed.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`).join('\n')

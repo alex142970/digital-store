@@ -22,7 +22,10 @@ export default async function productRoutes(app: FastifyInstance) {
     },
     async () => {
       const { rows } = await app.pool.query<Product>(
-        'select sku, name, type, price, currency, image, old_price as "oldPrice" from products order by price, sku'
+        `select p.sku, p.name, p.type, p.price, p.currency, p.image, p.old_price as "oldPrice",
+                (select count(*)::int from license_keys k
+                 where k.sku = p.sku and k.allocated_order_id is null and k.order_id is null) as available
+         from products p order by p.price, p.sku`
       )
       return { products: rows }
     }

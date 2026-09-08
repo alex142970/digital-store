@@ -209,26 +209,21 @@ test('provider refuses to issue a key for a sku that does not belong to the orde
   expect(leaked.rowCount).toBe(0)
 })
 
-test('delivery ignores a key reserved for a different sku', async () => {
+test('the database refuses to issue a key that belongs to another sku', async () => {
   const order = (await createOrder(ctx, 'sku-mismatch-2')).json()
 
   await ctx.pool.query(
-    `update license_keys set order_id = $1, issued_at = now()
-     where id = (select id from license_keys where sku = 'KEY-GTA5' and order_id is null limit 1)`,
+    'update license_keys set allocated_order_id = null where allocated_order_id = $1',
     [order.id]
   )
 
-  await pay(ctx, order.id)
-
-  const delivered = (await fetchOrder(ctx, order.id)).json()
-
-  if (delivered.code !== null) {
-    const { rows } = await ctx.pool.query<{ sku: string }>(
-      'select sku from license_keys where code = $1',
-      [delivered.code]
+  await expect(
+    ctx.pool.query(
+      `update license_keys set allocated_order_id = $1, order_id = $1, issued_at = now()
+       where id = (select id from license_keys where sku = 'KEY-GTA5' and allocated_order_id is null limit 1)`,
+      [order.id]
     )
-    expect(rows[0]?.sku).toBe(order.sku)
-  }
+  ).rejects.toThrow(/license_keys_allocation_fk/)
 })
 
 test('concurrent repeats of one request_id all get the same code and burn one key', async () => {

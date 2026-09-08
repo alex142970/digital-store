@@ -63,13 +63,6 @@ const countStatuses = (responses: ApiResponse[]) =>
     return acc
   }, {})
 
-const countOrderStates = (states: ApiResponse[]) =>
-  states.reduce<Record<string, number>>((acc, state) => {
-    const status = String(state.body?.status ?? `http_${state.status}`)
-    acc[status] = (acc[status] ?? 0) + 1
-    return acc
-  }, {})
-
 const settle = async (timeoutMs = 30_000) => {
   const deadline = Date.now() + timeoutMs
 
@@ -251,51 +244,67 @@ const run = async () => {
   )
 
   await resetFixture(1)
-  const contenders: string[] = []
-  for (let i = 0; i < CONCURRENCY; i += 1) {
-    contenders.push(await newOrder(`race-last-key-${i}`))
-  }
-  const contenderWebhooks = await Promise.all(
-    contenders.map((id) => post('/webhook/payment', paidEvent(id, 0)))
+  const attempts = await Promise.all(
+    Array.from({ length: CONCURRENCY }, (_, i) =>
+      post('/api/orders', { sku: SKU, idempotencyKey: `race-last-unit-${i}` })
+    )
   )
-  await settle()
-  const states = await Promise.all(contenders.map((id) => get(`/api/orders/${id}`)))
+  const winnerId = attempts.find((r) => r.status === 201)?.body?.id
   check(
-    '[ТЗ 1] все заказы борются за последний ключ: выдан ровно один',
-    { delivered: 1, undelivered: CONCURRENCY - 1, distinctCodes: 1, failedResponses: 0 },
+    '[ТЗ 2] гонка за последнюю единицу: оформился ровно один, остальные получили отказ',
+    { created: 1, refused: CONCURRENCY - 1, refusalCodes: ['out_of_stock'] },
     {
-      delivered: states.filter((r) => r.body?.status === 'delivered').length,
-      undelivered: states.filter((r) => r.body?.status !== 'delivered').length,
-      distinctCodes: new Set(states.map((r) => r.body?.code).filter(Boolean)).size,
-      failedResponses: contenderWebhooks.filter((r) => r.status !== 200).length
+      created: attempts.filter((r) => r.status === 201).length,
+      refused: attempts.filter((r) => r.status === 409).length,
+      refusalCodes: [
+        ...new Set(
+          attempts.filter((r) => r.status === 409).map((r) => String(r.body?.error ?? 'unknown'))
+        )
+      ]
     },
-    countOrderStates(states)
+    countStatuses(attempts)
   )
 
+  if (typeof winnerId === 'string') {
+    await post('/webhook/payment', paidEvent(winnerId, 0))
+    await settle()
+    const winnerState = await get(`/api/orders/${winnerId}`)
+    const stranded = await pool.query<{ stranded: number }>(
+      `select count(*)::int as stranded from orders o
+       left join deliveries d on d.order_id = o.id
+       where o.sku = $1
+         and o.status in ('paid', 'delivering', 'out_of_stock', 'delivery_failed', 'delivered')
+         and d.order_id is null`,
+      [SKU]
+    )
+    check(
+      '[ТЗ 2] победитель получает товар, оплаченных без товара не остаётся',
+      { status: 'delivered', hasCode: true, stranded: 0 },
+      {
+        status: winnerState.body?.status,
+        hasCode: Boolean(winnerState.body?.code),
+        stranded: stranded.rows[0]?.stranded
+      }
+    )
+  }
+
+  await resetFixture(1)
+  const holder = await newOrder('race-holding-unit')
+  const whileReserved = await post('/api/orders', {
+    sku: SKU,
+    idempotencyKey: 'race-while-reserved'
+  })
   await pool.query(
-    "insert into license_keys (sku, code) values ($1, 'RACE-RESTOCK-0001') on conflict (code) do nothing",
-    [SKU]
+    "update orders set reservation_expires_at = now() - interval '1 second' where id = $1",
+    [holder]
   )
-  const stuck = contenders.filter((_, index) => states[index]?.body?.status === 'out_of_stock')
-  const retries = await Promise.all(
-    stuck.map((id, index) => post('/webhook/payment', paidEvent(id, index + 1000)))
-  )
-  await settle()
-  const afterRestock = await Promise.all(stuck.map((id) => get(`/api/orders/${id}`)))
-  const restockUsed = await pool.query<{ used: number }>(
-    'select count(*)::int as used from license_keys where sku = $1 and order_id is not null',
-    [SKU]
-  )
+  const afterExpiry = await post('/api/orders', { sku: SKU, idempotencyKey: 'race-after-expiry' })
   check(
-    '[ТЗ 4] пополнение пула под нагрузкой: ровно один застрявший заказ получает ключ',
-    { delivered: 1, used: 2, failedResponses: 0 },
-    {
-      delivered: afterRestock.filter((r) => r.body?.status === 'delivered').length,
-      used: restockUsed.rows[0]?.used,
-      failedResponses: retries.filter((r) => r.status !== 200).length
-    },
-    countOrderStates(afterRestock)
+    '[ТЗ 3] бронь держит единицу, а после истечения возвращает её в продажу',
+    { whileReserved: 409, afterExpiry: 201 },
+    { whileReserved: whileReserved.status, afterExpiry: afterExpiry.status }
   )
+
   await resetFixture(CONCURRENCY)
   await pool.query(
     `insert into promocodes (code, type, value, max_uses)

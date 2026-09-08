@@ -75,12 +75,14 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     request.log.error({ err: error }, 'request failed')
 
     if (error instanceof OrderError) {
-      return reply.status(error.status).send({ error: error.code, message: error.message })
+      return reply
+        .status(error.status)
+        .send({ ...error.details, error: error.code, message: error.message })
     }
 
     const pgCode = (error as unknown as { code?: string }).code
 
-    if (pgCode === '23514' || pgCode === '55P03' || pgCode === '40001') {
+    if (pgCode === '23514' || pgCode === '55P03' || pgCode === '40001' || pgCode === '40P01') {
       return reply.status(409).send({
         error: 'conflict',
         message: 'Conflicting concurrent request, please retry'

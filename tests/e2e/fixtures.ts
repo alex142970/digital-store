@@ -41,6 +41,17 @@ export async function resetStuckProduct(): Promise<void> {
   await client.query('delete from orders where sku = $1', [STUCK_SKU])
 }
 
+export async function seedStuckKey(): Promise<void> {
+  await db().query('insert into license_keys (sku, code) values ($1, $2)', [
+    STUCK_SKU,
+    `STOCKLESS-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  ])
+}
+
+export async function dropReservedKey(orderId: string): Promise<void> {
+  await db().query('delete from license_keys where allocated_order_id = $1', [orderId])
+}
+
 export async function keysUsedFor(code: string): Promise<number> {
   const { rows } = await db().query<{ count: number }>(
     'select count(*)::int as count from license_keys where code = $1 and order_id is not null',

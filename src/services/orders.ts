@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import type pg from 'pg'
 import { withTransaction } from '../db/pool.ts'
+import { allocate, alternativesFor, expireReservations } from './inventory.ts'
 import { reservePromocode } from './promocodes.ts'
 import type { components } from '../types/api.d.ts'
 
@@ -10,11 +11,18 @@ export type OrderStatus = components['schemas']['OrderStatus']
 export class OrderError extends Error {
   status: number
   code: string
+  details: Record<string, unknown>
 
-  constructor(status: number, code: string, message: string) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    details: Record<string, unknown> = {}
+  ) {
     super(message)
     this.status = status
     this.code = code
+    this.details = details
   }
 }
 
@@ -61,20 +69,22 @@ export async function createOrder(
   pool: pg.Pool,
   input: { sku: string; idempotencyKey: string; promoCode?: string }
 ): Promise<{ order: Order; created: boolean }> {
-  const product = await pool.query<{ price: number; currency: string }>(
-    'select price, currency from products where sku = $1',
-    [input.sku]
-  )
-
-  const found = product.rows[0]
-
-  if (!found) {
-    throw new OrderError(404, 'product_not_found', `Product ${input.sku} not found`)
-  }
-
   const id = newOrderId()
 
+  await expireReservations(pool, 20, input.sku)
+
   const createdId = await withTransaction(async (client) => {
+    const product = await client.query<{ price: number; currency: string }>(
+      'select price, currency from products where sku = $1',
+      [input.sku]
+    )
+
+    const found = product.rows[0]
+
+    if (!found) {
+      throw new OrderError(404, 'product_not_found', `Product ${input.sku} not found`)
+    }
+
     const inserted = await client.query<{ id: string }>(
       `insert into orders (id, sku, amount, idempotency_key)
        values ($1, $2, $3, $4)
@@ -86,6 +96,12 @@ export async function createOrder(
     const orderId = inserted.rows[0]?.id
 
     if (!orderId) return null
+
+    if (!(await allocate(client, input.sku, orderId))) {
+      throw new OrderError(409, 'out_of_stock', 'Этот товар только что раскупили', {
+        alternatives: await alternativesFor(client, input.sku)
+      })
+    }
 
     if (input.promoCode) {
       const reserved = await reservePromocode(client, input.promoCode, found.price, found.currency)

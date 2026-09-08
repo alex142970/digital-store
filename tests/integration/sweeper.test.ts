@@ -1,5 +1,7 @@
 process.env.DELIVERY_SWEEP_INTERVAL_MS = '50'
 process.env.ORDER_EXPIRES_AFTER_MS = '150'
+process.env.RESERVATION_TTL_MS = '100'
+process.env.RESERVATION_SWEEP_INTERVAL_MS = '50'
 
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 
@@ -121,4 +123,35 @@ test('expired order can no longer be paid', async () => {
   })
 
   expect(late.statusCode).toBe(409)
+})
+
+test('the abandoned-order sweeper returns the reserved unit to the pool', async () => {
+  await ctx.pool.query("delete from license_keys where code <> 'LFXC-TNCS-BPCD'")
+
+  const created = await ctx.app.inject({
+    method: 'POST',
+    url: '/api/orders',
+    payload: { sku: 'KEY-CS2-PRIME', idempotencyKey: 'abandoned-unit-1' }
+  })
+
+  expect(created.statusCode).toBe(201)
+  const order = created.json()
+
+  await waitFor(async () => {
+    const { rows } = await ctx.pool.query('select status from orders where id = $1', [order.id])
+    return rows[0]?.status === 'payment_failed'
+  })
+
+  const { rows } = await ctx.pool.query<{ free: number }>(
+    `select count(*)::int as free from license_keys
+     where allocated_order_id is null and order_id is null`
+  )
+  expect(rows[0]?.free).toBe(1)
+
+  const next = await ctx.app.inject({
+    method: 'POST',
+    url: '/api/orders',
+    payload: { sku: 'KEY-CS2-PRIME', idempotencyKey: 'abandoned-unit-next' }
+  })
+  expect(next.statusCode).toBe(201)
 })

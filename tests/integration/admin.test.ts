@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 import {
   createOrder,
+  createOrderWithoutStock,
   fetchOrder,
   pay,
   resetData,
@@ -24,9 +25,7 @@ beforeEach(async () => {
 })
 
 test('stuck list shows paid but undelivered orders only', async () => {
-  await ctx.pool.query('delete from license_keys')
-
-  const stuck = (await createOrder(ctx, 'admin-stuck-1')).json()
+  const stuck = await createOrderWithoutStock(ctx, 'admin-stuck-1')
   await pay(ctx, stuck.id)
 
   const untouched = (await createOrder(ctx, 'admin-untouched-1')).json()
@@ -57,9 +56,7 @@ test('restock adds keys and reports availability', async () => {
 })
 
 test('restock then retry delivers exactly one key and repeated retry is a no-op', async () => {
-  await ctx.pool.query('delete from license_keys')
-
-  const order = (await createOrder(ctx, 'admin-recovery-1')).json()
+  const order = await createOrderWithoutStock(ctx, 'admin-recovery-1')
   await pay(ctx, order.id)
   expect((await fetchOrder(ctx, order.id)).json().status).toBe('out_of_stock')
 

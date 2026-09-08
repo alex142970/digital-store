@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { config } from '../config.ts'
 import { withTransaction } from '../db/pool.ts'
 import { deliverOrder } from './delivery.ts'
+import { expireReservations, release } from './inventory.ts'
 import { UNFINISHED } from './order-status.ts'
 import { releasePromocode } from './promocodes.ts'
 
@@ -53,6 +54,7 @@ async function expireAbandonedOrders(app: FastifyInstance): Promise<number> {
       )
 
       if ((updated.rowCount ?? 0) > 0) {
+        await release(client, row.id)
         await releasePromocode(client, row.id)
         expired += 1
       }
@@ -60,6 +62,34 @@ async function expireAbandonedOrders(app: FastifyInstance): Promise<number> {
 
     return expired
   }, app.pool)
+}
+
+export function startReservationSweeper(app: FastifyInstance): () => void {
+  if (config.RESERVATION_SWEEP_INTERVAL_MS === 0) return () => {}
+
+  let running = false
+
+  const tick = async () => {
+    if (running) return
+    running = true
+
+    try {
+      const released = await expireReservations(app.pool)
+
+      if (released > 0) {
+        app.log.info({ count: released }, 'sweeper released expired reservations')
+      }
+    } catch (error) {
+      app.log.error({ err: error }, 'reservation sweep failed')
+    } finally {
+      running = false
+    }
+  }
+
+  const timer = setInterval(() => void tick(), config.RESERVATION_SWEEP_INTERVAL_MS)
+  timer.unref()
+
+  return () => clearInterval(timer)
 }
 
 export function startDeliverySweeper(app: FastifyInstance): () => void {

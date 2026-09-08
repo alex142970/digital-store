@@ -1410,3 +1410,17 @@
     }
   }
 }
+
+.card__alternative {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.card--highlighted {
+  box-shadow: 0 0 0 2px var(--color-accent);
+}

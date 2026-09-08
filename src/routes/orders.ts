@@ -19,7 +19,7 @@ export default async function orderRoutes(app: FastifyInstance) {
           201: ref('Order'),
           400: ref('Error'),
           404: ref('Error'),
-          409: ref('Error')
+          409: ref('CheckoutConflict')
         }
       }
     },

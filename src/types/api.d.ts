@@ -205,6 +205,8 @@ export interface components {
             oldPrice?: number | null;
             currency: string;
             image?: string | null;
+            /** @description Свободных единиц на складе */
+            available?: number;
         };
         /** @enum {string} */
         OrderStatus: "created" | "paid" | "delivering" | "delivered" | "payment_failed" | "out_of_stock" | "delivery_failed";
@@ -263,9 +265,21 @@ export interface components {
             status: "error";
             reason: string;
         };
+        CheckoutConflict: {
+            error: string;
+            message: string;
+            /** @description Другие предложения того же типа, доступные к покупке */
+            alternatives?: {
+                sku: string;
+                name: string;
+                price: number;
+                currency: string;
+                available: number;
+            }[];
+        };
         Error: {
             /** @enum {string} */
-            error: "validation_error" | "not_found" | "conflict" | "promo_limit_reached" | "promo_not_found" | "promo_currency_mismatch" | "product_not_found" | "order_not_payable" | "rate_limited" | "internal_error";
+            error: "validation_error" | "not_found" | "conflict" | "promo_limit_reached" | "promo_not_found" | "out_of_stock" | "reservation_expired" | "promo_currency_mismatch" | "product_not_found" | "order_not_payable" | "rate_limited" | "internal_error";
             message: string;
         };
         Health: {
@@ -429,13 +443,13 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
-            /** @description Промокод исчерпан или не применим */
+            /** @description Товар раскуплен либо промокод исчерпан */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Error"];
+                    "application/json": components["schemas"]["CheckoutConflict"];
                 };
             };
         };

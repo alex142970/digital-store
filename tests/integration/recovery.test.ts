@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from 'vitest'
 import {
   createOrder,
+  createOrderWithoutStock,
   fetchOrder,
   pay,
   resetData,
@@ -124,16 +125,14 @@ test('a successful retry clears the failure reason', async () => {
 })
 
 test('an empty key pool is reported by the primary provider without asking the backup', async () => {
-  await ctx.pool.query('delete from license_keys')
-
-  const order = (await createOrder(ctx, 'oos-no-fallback-1')).json()
+  const order = await createOrderWithoutStock(ctx, 'oos-no-fallback-1')
   await pay(ctx, order.id)
 
   expect((await fetchOrder(ctx, order.id)).json().status).toBe('out_of_stock')
   expect(await attempts(order.id)).toEqual([{ provider: 'a', outcome: 'out_of_stock' }])
 })
 
-test('a key locked by someone else is skipped instead of waited on', async () => {
+test('a reserved key locked by another session fails fast into a recoverable state', async () => {
   await ctx.pool.query("delete from license_keys where code <> 'LFXC-TNCS-BPCD'")
   const order = (await createOrder(ctx, 'skip-locked-1')).json()
 
@@ -149,8 +148,16 @@ test('a key locked by someone else is skipped instead of waited on', async () =>
     await pay(ctx, order.id)
     const elapsed = Date.now() - started
 
-    expect((await fetchOrder(ctx, order.id)).json().status).toBe('out_of_stock')
+    const blocked = (await fetchOrder(ctx, order.id)).json()
+
+    expect(blocked.status).toBe('delivery_failed')
     expect(elapsed).toBeLessThan(1000)
+
+    const stillOwned = await ctx.pool.query<{ owner: string | null }>(
+      'select allocated_order_id as owner from license_keys where sku = $1',
+      ['KEY-CS2-PRIME']
+    )
+    expect(stillOwned.rows[0]?.owner).toBe(order.id)
   } finally {
     await holder.query('rollback')
     holder.release()

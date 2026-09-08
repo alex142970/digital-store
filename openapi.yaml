@@ -87,11 +87,11 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Промокод исчерпан или не применим
+          description: Товар раскуплен либо промокод исчерпан
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: '#/components/schemas/CheckoutConflict'
 
   /api/orders/{orderId}:
     get:
@@ -348,6 +348,10 @@ components:
           type: string
         image:
           type: [string, 'null']
+        available:
+          type: integer
+          minimum: 0
+          description: Свободных единиц на складе
 
     OrderStatus:
       type: string
@@ -484,6 +488,32 @@ components:
         reason:
           type: string
 
+    CheckoutConflict:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        alternatives:
+          type: array
+          description: Другие предложения того же типа, доступные к покупке
+          items:
+            type: object
+            required: [sku, name, price, currency, available]
+            properties:
+              sku:
+                type: string
+              name:
+                type: string
+              price:
+                type: integer
+              currency:
+                type: string
+              available:
+                type: integer
+
     Error:
       type: object
       required: [error, message]
@@ -496,6 +526,8 @@ components:
             - conflict
             - promo_limit_reached
             - promo_not_found
+            - out_of_stock
+            - reservation_expired
             - promo_currency_mismatch
             - product_not_found
             - order_not_payable

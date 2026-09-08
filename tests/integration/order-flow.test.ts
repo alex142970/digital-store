@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 import {
   createOrder,
+  createOrderWithoutStock,
   fetchOrder,
   paidEvent,
   pay,
@@ -136,9 +137,7 @@ test('stale paid event does not revive a failed order', async () => {
 })
 
 test('empty pool leaves the order recoverable and delivery resumes after restock', async () => {
-  await ctx.pool.query('delete from license_keys')
-
-  const order = (await createOrder(ctx, 'restock-1')).json()
+  const order = await createOrderWithoutStock(ctx, 'restock-1')
   await pay(ctx, order.id)
 
   const stuck = (await fetchOrder(ctx, order.id)).json()

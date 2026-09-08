@@ -2,6 +2,8 @@ import { test, expect, type APIRequestContext } from '@playwright/test'
 import {
   STUCK_SKU,
   closeFixtures,
+  dropReservedKey,
+  seedStuckKey,
   keysUsedFor,
   removeStuckProduct,
   resetStuckProduct
@@ -13,12 +15,15 @@ test.afterAll(async () => {
 })
 
 async function stuckOrder(request: APIRequestContext): Promise<string> {
+  await seedStuckKey()
+
   const created = await request.post('/api/orders', {
     data: { sku: STUCK_SKU, idempotencyKey: `e2e-admin-${Date.now()}-${Math.random()}` }
   })
   expect(created.status()).toBe(201)
   const order = await created.json()
 
+  await dropReservedKey(order.id)
   await request.post(`/api/orders/${order.id}/pay`, { data: { outcome: 'success' } })
 
   await expect

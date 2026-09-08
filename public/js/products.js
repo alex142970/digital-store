@@ -124,12 +124,16 @@ function renderCard(product) {
     prices.append(oldPrice)
   }
 
+  card.dataset.card = product.sku
+
+  const available = typeof product.available === 'number' ? product.available : null
+
   const buy = document.createElement('button')
   buy.className = 'button card__buy'
   buy.type = 'button'
-  buy.textContent = 'Купить'
   buy.dataset.buy = product.sku
   buy.setAttribute('aria-label', `Купить: ${product.name}`)
+  applyAvailability(buy, available)
 
   const error = document.createElement('p')
   error.className = 'card__error'
@@ -171,8 +175,40 @@ function renderMessage(root, text, retry) {
 
 /** @param {HTMLButtonElement} button */
 function resetBuyButton(button) {
-  button.disabled = false
-  button.textContent = 'Купить'
+  const raw = button.dataset.available
+  const left = raw === undefined ? null : Number(raw)
+  applyAvailability(button, left !== null && Number.isFinite(left) ? left : null)
+}
+
+/**
+ * @param {HTMLButtonElement} button
+ * @param {number | null} available
+ */
+function applyAvailability(button, available) {
+  if (available !== null) button.dataset.available = String(available)
+
+  const soldOut = available !== null && available <= 0
+  button.disabled = soldOut
+  button.textContent = soldOut ? 'Раскуплено' : 'Купить'
+}
+
+/** @param {Event} event */
+function onAlternativeClick(event) {
+  const target = event.target
+  const chosen = target instanceof Element ? target.closest('[data-alternative]') : null
+
+  if (!(chosen instanceof HTMLElement) || !chosen.dataset.alternative) return
+
+  const card = document.querySelector(`[data-card="${CSS.escape(chosen.dataset.alternative)}"]`)
+
+  if (!(card instanceof HTMLElement)) return
+
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  card.classList.add('card--highlighted')
+  window.setTimeout(() => card.classList.remove('card--highlighted'), 1600)
+
+  const buy = card.querySelector('[data-buy]')
+  if (buy instanceof HTMLElement) buy.focus({ preventScroll: true })
 }
 
 /** @param {Event} event */
@@ -201,10 +237,52 @@ async function onBuyClick(event) {
     resetBuyButton(button)
 
     if (error instanceof HTMLElement) {
-      error.textContent = describePromoFailure(failure) ?? describe(failure)
+      error.replaceChildren(describeCheckoutFailure(failure))
       error.hidden = false
     }
+
+    if (failure instanceof ApiError && failure.code === 'out_of_stock') {
+      applyAvailability(button, 0)
+    }
   }
+}
+
+/** @param {unknown} failure */
+function describeCheckoutFailure(failure) {
+  const box = document.createDocumentFragment()
+  const text = document.createElement('span')
+
+  text.textContent =
+    (failure instanceof ApiError && failure.code === 'out_of_stock'
+      ? failure.message
+      : describePromoFailure(failure)) ?? describe(failure)
+
+  box.append(text)
+
+  const alternatives =
+    failure instanceof ApiError && Array.isArray(failure.body?.alternatives)
+      ? failure.body.alternatives
+      : []
+
+  if (alternatives.length > 0) {
+    const list = document.createElement('span')
+    list.className = 'card__alternatives'
+    list.append(' Другие предложения: ')
+
+    alternatives.forEach((item, index) => {
+      const link = document.createElement('button')
+      link.type = 'button'
+      link.className = 'card__alternative'
+      link.dataset.alternative = item.sku
+      link.textContent = `${item.name} — ${formatPrice(item.price, item.currency)}`
+      if (index > 0) list.append(', ')
+      list.append(link)
+    })
+
+    box.append(list)
+  }
+
+  return box
 }
 
 export async function initProducts() {
@@ -215,10 +293,11 @@ export async function initProducts() {
   if (roots.length === 0) return
 
   roots.forEach((root) => root.addEventListener('click', onBuyClick))
+  document.addEventListener('click', onAlternativeClick)
 
   window.addEventListener('pageshow', () => {
     document.querySelectorAll('[data-buy]').forEach((button) => {
-      if (button instanceof HTMLButtonElement && button.disabled) resetBuyButton(button)
+      if (button instanceof HTMLButtonElement) resetBuyButton(button)
     })
   })
 

@@ -1,5 +1,12 @@
 import { test, expect } from '@playwright/test'
-import { STUCK_SKU, closeFixtures, removeStuckProduct, resetStuckProduct } from './fixtures.ts'
+import {
+  STUCK_SKU,
+  closeFixtures,
+  dropReservedKey,
+  seedStuckKey,
+  removeStuckProduct,
+  resetStuckProduct
+} from './fixtures.ts'
 
 test.describe('покупка товара', () => {
   test('успешная оплата: от клика «Купить» до выдачи ключа', async ({ page }) => {
@@ -125,10 +132,13 @@ test.describe('покупка товара', () => {
   }) => {
     await resetStuckProduct()
 
+    await seedStuckKey()
+
     const created = await request.post('/api/orders', {
       data: { sku: STUCK_SKU, idempotencyKey: `e2e-empty-pool-${Date.now()}` }
     })
     const order = await created.json()
+    await dropReservedKey(order.id)
     await request.post(`/api/orders/${order.id}/pay`, { data: { outcome: 'success' } })
 
     await page.goto(`/order.html?id=${order.id}`)

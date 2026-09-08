@@ -2,6 +2,7 @@ import type pg from 'pg'
 import { withTransaction } from '../db/pool.ts'
 import type { components } from '../types/api.d.ts'
 import { deliverOrder } from './delivery.ts'
+import { allocate, release } from './inventory.ts'
 import { RESUMABLE } from './order-status.ts'
 import { releasePromocode } from './promocodes.ts'
 
@@ -37,8 +38,18 @@ export async function applyPending(
   options: { awaitDelivery?: boolean } = {}
 ): Promise<WebhookResult> {
   const shouldDeliver = await withTransaction(async (client) => {
-    const order = await client.query<{ status: string; amount: number; discount: number }>(
-      'select status, amount, discount from orders where id = $1 for update',
+    const order = await client.query<{
+      status: string
+      sku: string
+      amount: number
+      discount: number
+      reservation_expired: boolean
+      allocated: boolean
+    }>(
+      `select o.status, o.sku, o.amount, o.discount,
+              (o.reservation_expires_at is not null and o.reservation_expires_at < now()) as reservation_expired,
+              exists (select 1 from license_keys k where k.allocated_order_id = o.id) as allocated
+       from orders o where o.id = $1 for update`,
       [orderId]
     )
 
@@ -88,10 +99,29 @@ export async function applyPending(
           )
 
           if ((rejected.rowCount ?? 0) > 0) {
+            await release(client, orderId)
+            await releasePromocode(client, orderId)
+            status = 'payment_failed'
+          }
+        } else if (status === 'created' && current.reservation_expired) {
+          const lapsed = await client.query(
+            `update orders set status = 'payment_failed',
+                    failure_code = 'reservation_expired',
+                    failure_reason = 'reservation expired before payment'
+             where id = $1 and status = 'created'`,
+            [orderId]
+          )
+
+          if ((lapsed.rowCount ?? 0) > 0) {
+            await release(client, orderId)
             await releasePromocode(client, orderId)
             status = 'payment_failed'
           }
         } else if (status === 'created') {
+          if (!current.allocated) {
+            await allocate(client, current.sku, orderId)
+          }
+
           const accepted = await client.query(
             `update orders set status = 'paid' where id = $1 and status = 'created'`,
             [orderId]
@@ -111,6 +141,7 @@ export async function applyPending(
         )
 
         if ((failed.rowCount ?? 0) > 0) {
+          await release(client, orderId)
           await releasePromocode(client, orderId)
           status = 'payment_failed'
         }

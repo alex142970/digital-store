@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 import {
   createOrder,
-  fetchOrder,
   paidEvent,
   pay,
   resetData,
@@ -61,46 +60,31 @@ test('concurrent orders never share a key', async () => {
   expect(rows[0].owners).toBe(10)
 })
 
-test('the last free key goes to exactly one of two competing orders', async () => {
+test('the last free unit goes to exactly one of two competing checkouts', async () => {
   await ctx.pool.query("delete from license_keys where code <> 'LFXC-TNCS-BPCD'")
 
-  const first = (await createOrder(ctx, 'last-key-first')).json()
-  const second = (await createOrder(ctx, 'last-key-second')).json()
+  const attempts = await Promise.all([
+    createOrder(ctx, 'last-unit-a'),
+    createOrder(ctx, 'last-unit-b')
+  ])
 
-  const holder = await ctx.pool.connect()
+  const created = attempts.filter((r) => r.statusCode === 201)
+  const refused = attempts.filter((r) => r.statusCode === 409)
 
-  try {
-    await holder.query('begin')
-    await holder.query(
-      `select id from license_keys where sku = 'KEY-CS2-PRIME' and order_id is null
-       order by id for update limit 1`
-    )
+  expect(created).toHaveLength(1)
+  expect(refused).toHaveLength(1)
+  expect(refused[0]?.json().error).toBe('out_of_stock')
 
-    const blocked = pay(ctx, first.id)
-    await new Promise((resolve) => setTimeout(resolve, 200))
-    await holder.query('rollback')
-    await blocked
-  } finally {
-    holder.release()
-  }
+  const winner = created[0]?.json()
+  await pay(ctx, winner.id)
+  await waitForStatus(ctx, winner.id, ['delivered'])
 
-  await pay(ctx, second.id)
-
-  const statuses = [
-    (await fetchOrder(ctx, first.id)).json(),
-    (await fetchOrder(ctx, second.id)).json()
-  ]
-
-  const delivered = statuses.filter((order) => order.status === 'delivered')
-  const codes = new Set(statuses.map((order) => order.code).filter(Boolean))
-
-  expect(delivered.length).toBeGreaterThanOrEqual(1)
-  expect(codes.size).toBe(delivered.length)
-
-  const { rows } = await ctx.pool.query(
-    'select count(*)::int as used from license_keys where order_id is not null'
+  const { rows } = await ctx.pool.query<{ used: number; allocated: number }>(
+    `select (select count(*)::int from license_keys where order_id is not null) as used,
+            (select count(*)::int from license_keys where allocated_order_id is not null) as allocated`
   )
-  expect(rows[0].used).toBe(delivered.length)
+
+  expect(rows[0]).toEqual({ used: 1, allocated: 1 })
 })
 
 test('concurrent creation with one idempotency key produces a single order', async () => {

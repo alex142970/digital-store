@@ -133,7 +133,8 @@ export default async function adminRoutes(app: FastifyInstance) {
       )
 
       const available = await app.pool.query<{ count: number }>(
-        'select count(*)::int as count from license_keys where sku = $1 and order_id is null',
+        `select count(*)::int as count from license_keys
+         where sku = $1 and allocated_order_id is null and order_id is null`,
         [sku]
       )
 

@@ -63,20 +63,42 @@ export default async function providerRoutes(app: FastifyInstance) {
           [provider, request_id]
         )
 
-        if (repeated.rows[0]) return repeated.rows[0].code
+        if (repeated.rows[0]) return { kind: 'issued' as const, code: repeated.rows[0].code }
+
+        const owned = await client.query<{ id: string }>(
+          'select id from license_keys where allocated_order_id = $1 and order_id is null',
+          [order_id]
+        )
+
+        const ownedId = owned.rows[0]?.id
 
         const key = await client.query<{ id: string; code: string }>(
-          `select id, code from license_keys
-           where sku = $1 and order_id is null
-           order by id
-           for update skip locked
-           limit 1`,
-          [sku]
+          ownedId
+            ? `select id, code from license_keys
+               where id = $1
+               for update skip locked`
+            : `select id, code from license_keys
+               where sku = $1 and allocated_order_id is null and order_id is null
+               order by id
+               for update skip locked
+               limit 1`,
+          ownedId ? [ownedId] : [sku]
         )
 
         const picked = key.rows[0]
 
-        if (!picked) return null
+        if (!picked) return { kind: ownedId ? ('busy' as const) : ('empty' as const) }
+
+        const taken = await client.query(
+          `update license_keys
+           set allocated_order_id = $1, order_id = $1, issued_at = now()
+           where id = $2
+             and order_id is null
+             and (allocated_order_id = $1 or allocated_order_id is null)`,
+          [order_id, picked.id]
+        )
+
+        if ((taken.rowCount ?? 0) === 0) return { kind: 'busy' as const }
 
         await client.query(
           `insert into provider_issues (provider, request_id, code) values ($1, $2, $3)
@@ -84,15 +106,14 @@ export default async function providerRoutes(app: FastifyInstance) {
           [provider, request_id, picked.code]
         )
 
-        await client.query(
-          'update license_keys set order_id = $1, issued_at = now() where id = $2',
-          [order_id, picked.id]
-        )
-
-        return picked.code
+        return { kind: 'issued' as const, code: picked.code }
       }, app.pool)
 
-      if (!issued) {
+      if (issued.kind === 'busy') {
+        return reply.status(503).send({ status: 'error', reason: 'inventory busy, retry' })
+      }
+
+      if (issued.kind === 'empty') {
         return reply.status(409).send({ status: 'error', reason: 'out_of_stock' })
       }
 
@@ -100,7 +121,7 @@ export default async function providerRoutes(app: FastifyInstance) {
         await hang()
       }
 
-      return reply.send({ status: 'ok', request_id, code: issued })
+      return reply.send({ status: 'ok', request_id, code: issued.code })
     }
   )
 }

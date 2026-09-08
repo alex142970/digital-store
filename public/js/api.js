@@ -1,5 +1,5 @@
 /**
- * @typedef {{ sku: string, name: string, type: string, price: number, currency: string, image: string | null, oldPrice?: number | null }} Product
+ * @typedef {{ sku: string, name: string, type: string, price: number, currency: string, image: string | null, oldPrice?: number | null, available?: number }} Product
  * @typedef {{ id: string, sku: string, amount: number, discount: number, total: number, currency: string, status: string, code: string | null, failureReason: string | null, createdAt?: string, updatedAt?: string, promoCode?: string | null }} Order
  */
 
@@ -18,16 +18,19 @@ const STATUS_MESSAGES = {
 export class ApiError extends Error {
   status
   code
+  body
 
   /**
    * @param {number} status
    * @param {string} code
    * @param {string} message
+   * @param {Record<string, unknown>} [body]
    */
-  constructor(status, code, message) {
+  constructor(status, code, message, body) {
     super(message)
     this.status = status
     this.code = code
+    this.body = body ?? {}
   }
 }
 
@@ -63,7 +66,7 @@ const request = async (path, options = {}) => {
     const code = body && typeof body.error === 'string' ? body.error : 'unknown'
     const detail = body && typeof body.message === 'string' ? body.message : ''
     const fallback = STATUS_MESSAGES[response.status] ?? 'Ошибка запроса'
-    throw new ApiError(response.status, code, detail || fallback)
+    throw new ApiError(response.status, code, detail || fallback, body ?? {})
   }
 
   if (body === null) {
