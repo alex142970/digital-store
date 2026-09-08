@@ -16,6 +16,8 @@ import orderRoutes from './routes/orders.ts'
 import webhookRoutes from './routes/webhook.ts'
 import providerRoutes from './routes/providers.ts'
 import adminRoutes from './routes/admin.ts'
+import eventRoutes, { closeCatalogStreams } from './routes/events.ts'
+import { startCatalogListener } from './services/catalog-events.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -67,7 +69,8 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   await app.register(fastifyRateLimit, {
     max: 1200,
     timeWindow: '1 minute',
-    allowList: (request) => request.routeOptions.url === '/api/health'
+    allowList: (request) =>
+      request.routeOptions.url === '/api/health' || !request.url.startsWith('/api/')
   })
   app.decorate('pool', pool)
 
@@ -114,6 +117,16 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   await app.register(webhookRoutes)
   await app.register(providerRoutes)
   await app.register(adminRoutes)
+  await app.register(eventRoutes)
+
+  const connectionString =
+    (pool.options as { connectionString?: string }).connectionString ?? config.DATABASE_URL
+  const catalogListener = startCatalogListener(app.log, connectionString)
+
+  app.addHook('preClose', async () => {
+    closeCatalogStreams()
+    await catalogListener.stop()
+  })
 
   await app.register(fastifyStatic, {
     root: join(ROOT, 'public'),

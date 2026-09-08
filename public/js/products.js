@@ -1,6 +1,7 @@
 import { ApiError, createOrder, listProducts } from './api.js'
 import { describe, formatPrice } from './format.js'
 import { forgetPromoCode, getPromoCode } from './promo.js'
+import { onCatalogChange } from './live.js'
 
 /** @type {Record<string, string>} */
 const PROMO_MESSAGES = {
@@ -117,12 +118,16 @@ function renderCard(product) {
   price.textContent = formatPrice(product.price, product.currency)
   prices.append(price)
 
-  if (product.oldPrice) {
-    const oldPrice = document.createElement('span')
-    oldPrice.className = 'card__old-price'
+  const oldPrice = document.createElement('span')
+  oldPrice.className = 'card__old-price'
+
+  if (typeof product.oldPrice === 'number') {
     oldPrice.textContent = formatPrice(product.oldPrice, product.currency)
-    prices.append(oldPrice)
+  } else {
+    oldPrice.hidden = true
   }
+
+  prices.append(oldPrice)
 
   card.dataset.card = product.sku
 
@@ -187,6 +192,14 @@ function resetBuyButton(button) {
 function applyAvailability(button, available) {
   if (available !== null) button.dataset.available = String(available)
 
+  if (button.dataset.pending === '1') return
+
+  if (button.dataset.retry === '1') {
+    button.disabled = false
+    button.textContent = 'Повторить'
+    return
+  }
+
   const soldOut = available !== null && available <= 0
   button.disabled = soldOut
   button.textContent = soldOut ? 'Раскуплено' : 'Купить'
@@ -226,14 +239,24 @@ async function onBuyClick(event) {
     error.textContent = ''
   }
 
+  button.dataset.pending = '1'
+  delete button.dataset.retry
   button.disabled = true
   button.textContent = 'Создаём заказ…'
 
   try {
     const order = await createOrder(sku, idempotencyKeyFor(sku), getPromoCode())
+    delete button.dataset.pending
     forgetIdempotencyKey(sku)
     window.location.href = `/order.html?id=${encodeURIComponent(order.id)}`
   } catch (failure) {
+    delete button.dataset.pending
+
+    const unknownOutcome =
+      failure instanceof ApiError && (failure.status === 0 || failure.code === 'malformed')
+
+    if (unknownOutcome) button.dataset.retry = '1'
+
     resetBuyButton(button)
 
     if (error instanceof HTMLElement) {
@@ -242,7 +265,7 @@ async function onBuyClick(event) {
     }
 
     if (failure instanceof ApiError && failure.code === 'out_of_stock') {
-      applyAvailability(button, 0)
+      void refreshFromServer(catalogRoots)
     }
   }
 }
@@ -285,6 +308,90 @@ function describeCheckoutFailure(failure) {
   return box
 }
 
+/** @param {import('./api.js').Product} product */
+function refreshCard(product) {
+  const card = document.querySelector(`[data-card="${CSS.escape(product.sku)}"]`)
+
+  if (!(card instanceof HTMLElement)) return
+
+  const price = card.querySelector('.card__price')
+  const oldPrice = card.querySelector('.card__old-price')
+  const buy = card.querySelector('[data-buy]')
+
+  if (price instanceof HTMLElement) price.textContent = formatPrice(product.price, product.currency)
+
+  if (oldPrice instanceof HTMLElement) {
+    if (typeof product.oldPrice === 'number') {
+      oldPrice.textContent = formatPrice(product.oldPrice, product.currency)
+      oldPrice.hidden = false
+    } else {
+      oldPrice.hidden = true
+    }
+  }
+
+  if (buy instanceof HTMLButtonElement) {
+    applyAvailability(buy, typeof product.available === 'number' ? product.available : null)
+  }
+}
+
+const REFRESH_DEBOUNCE_MS = 250
+const REFRESH_MAX_WAIT_MS = 1000
+const REFRESH_RETRY_MS = 800
+const REFRESH_RETRY_MAX_MS = 30_000
+
+/** @type {Element[]} */
+let catalogRoots = []
+
+let generation = 0
+let refreshing = false
+let pendingRefresh = false
+let ready = false
+let failures = 0
+
+const retryDelay = () => Math.min(REFRESH_RETRY_MS * 2 ** failures, REFRESH_RETRY_MAX_MS)
+
+/** @param {Element[]} roots */
+async function refreshFromServer(roots) {
+  if (!ready || refreshing) {
+    pendingRefresh = true
+    return
+  }
+
+  refreshing = true
+  const mine = ++generation
+
+  try {
+    const { products } = await listProducts()
+
+    if (mine !== generation) return
+    if (!Array.isArray(products) || products.length === 0) return
+
+    const known = new Set(
+      [...document.querySelectorAll('[data-card]')].map((card) =>
+        card instanceof HTMLElement ? card.dataset.card : null
+      )
+    )
+
+    if (products.some((product) => !known.has(product.sku))) {
+      fillRows(roots, products)
+      return
+    }
+
+    products.forEach(refreshCard)
+    failures = 0
+  } catch {
+    failures += 1
+    pendingRefresh = true
+  } finally {
+    refreshing = false
+
+    if (pendingRefresh) {
+      pendingRefresh = false
+      window.setTimeout(() => void refreshFromServer(roots), retryDelay())
+    }
+  }
+}
+
 export async function initProducts() {
   const roots = ROWS.map((name) => document.querySelector(`[data-products="${name}"]`)).filter(
     (root) => root !== null
@@ -292,13 +399,37 @@ export async function initProducts() {
 
   if (roots.length === 0) return
 
+  catalogRoots = roots
   roots.forEach((root) => root.addEventListener('click', onBuyClick))
   document.addEventListener('click', onAlternativeClick)
+  let refreshTimer = 0
+  let firstSignalAt = 0
 
-  window.addEventListener('pageshow', () => {
+  onCatalogChange(() => {
+    const now = Date.now()
+
+    if (firstSignalAt === 0) firstSignalAt = now
+
+    if (now - firstSignalAt >= REFRESH_MAX_WAIT_MS) {
+      window.clearTimeout(refreshTimer)
+      firstSignalAt = 0
+      void refreshFromServer(roots)
+      return
+    }
+
+    window.clearTimeout(refreshTimer)
+    refreshTimer = window.setTimeout(() => {
+      firstSignalAt = 0
+      void refreshFromServer(roots)
+    }, REFRESH_DEBOUNCE_MS)
+  })
+
+  window.addEventListener('pageshow', (event) => {
     document.querySelectorAll('[data-buy]').forEach((button) => {
       if (button instanceof HTMLButtonElement) resetBuyButton(button)
     })
+
+    if (event.persisted) void refreshFromServer(roots)
   })
 
   await load(roots)
@@ -318,8 +449,12 @@ async function load(roots) {
 
   roots.forEach((root) => renderMessage(root, 'Загружаем каталог…'))
 
+  const mine = ++generation
+
   try {
     const { products } = await listProducts()
+
+    if (mine !== generation) return
 
     if (!Array.isArray(products) || products.length === 0) {
       roots.forEach((root) => renderMessage(root, 'Каталог пока пуст', () => load(roots)))
@@ -327,11 +462,22 @@ async function load(roots) {
     }
 
     fillRows(roots, products)
+    failures = 0
   } catch (error) {
+    if (mine !== generation) return
+
     const message = `Не удалось загрузить каталог: ${describe(error)}`
     roots.forEach((root) => renderMessage(root, message, () => load(roots)))
+    failures += 1
+    pendingRefresh = true
   } finally {
     loading = false
+    ready = true
+
+    if (pendingRefresh) {
+      pendingRefresh = false
+      window.setTimeout(() => void refreshFromServer(roots), retryDelay())
+    }
   }
 }
 

@@ -108,6 +108,12 @@ export function startDeliverySweeper(app: FastifyInstance): () => void {
         app.log.info({ count: expired }, 'sweeper expired abandoned orders')
       }
 
+      await app.pool.query(
+        `delete from catalog_events
+         where occurred_at < now() - ($1::int * interval '1 millisecond')`,
+        [config.CATALOG_EVENT_RETENTION_MS]
+      )
+
       const ids = await claimStuckOrders(app)
 
       for (const id of ids) {

@@ -4,6 +4,7 @@ import { initProducts } from './products.js'
 import { initSearch } from './search.js'
 import { initToggleGroups } from './toggle-groups.js'
 import { initBanner } from './banner.js'
+import { initLive } from './live.js'
 import { initPromo } from './promo.js'
 
 initCatalogMenu(
@@ -24,4 +25,5 @@ document.addEventListener('click', (event) => {
   if (target instanceof Element && target.closest('a[href="#"]')) event.preventDefault()
 })
 
+initLive(document.querySelector('[data-live]'))
 initProducts()

@@ -8,6 +8,7 @@ export default async function productRoutes(app: FastifyInstance) {
   app.get(
     '/api/products',
     {
+      config: { rateLimit: { max: 6000, timeWindow: '1 minute' } },
       schema: {
         response: {
           200: {

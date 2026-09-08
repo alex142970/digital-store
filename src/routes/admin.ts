@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { ref } from '../openapi.ts'
 import { deliverOrder } from '../services/delivery.ts'
 import { UNFINISHED } from '../services/order-status.ts'
+import { withTransaction } from '../db/pool.ts'
 import { getOrder } from '../services/orders.ts'
 import type { components } from '../types/api.d.ts'
 
@@ -101,6 +102,121 @@ export default async function adminRoutes(app: FastifyInstance) {
       }
 
       return getOrder(app.pool, order.id)
+    }
+  )
+
+  app.patch<{ Params: { sku: string }; Body: { price?: number; oldPrice?: number | null } }>(
+    '/api/admin/products/:sku',
+    {
+      schema: {
+        params: ref('SkuParams'),
+        body: ref('ProductPatch'),
+        response: {
+          200: ref('Product'),
+          400: ref('Error'),
+          404: ref('Error')
+        }
+      }
+    },
+    async (request, reply) => {
+      const { sku } = request.params
+      const { price, oldPrice } = request.body
+
+      const current = await app.pool.query<{ price: number; old_price: number | null }>(
+        'select price, old_price from products where sku = $1',
+        [sku]
+      )
+
+      const found = current.rows[0]
+
+      if (!found) {
+        return reply.status(404).send({ error: 'product_not_found', message: `Unknown sku ${sku}` })
+      }
+
+      const nextPrice = price ?? found.price
+      const nextOld = oldPrice !== undefined ? oldPrice : found.old_price
+
+      if (nextOld !== null && nextOld <= nextPrice && oldPrice !== undefined) {
+        return reply.status(400).send({
+          error: 'validation_error',
+          message: 'Зачёркнутая цена должна быть больше текущей'
+        })
+      }
+
+      const updated = await app.pool.query(
+        `update products
+         set price = coalesce($2, price),
+             old_price = case
+               when $3::boolean then $4
+               when $2::int is not null and old_price is not null and old_price <= $2::int then null
+               else old_price
+             end
+         where sku = $1`,
+        [sku, price ?? null, oldPrice !== undefined, oldPrice ?? null]
+      )
+
+      if (updated.rowCount === 0) {
+        return reply.status(404).send({ error: 'product_not_found', message: `Unknown sku ${sku}` })
+      }
+
+      const { rows } = await app.pool.query(
+        `select p.sku, p.name, p.type, p.price, p.currency, p.image, p.old_price as "oldPrice",
+                (select count(*)::int from license_keys k
+                 where k.sku = p.sku and k.allocated_order_id is null and k.order_id is null) as available
+         from products p where p.sku = $1`,
+        [sku]
+      )
+
+      return reply.send(rows[0])
+    }
+  )
+
+  app.delete<{ Body: { sku: string; count: number } }>(
+    '/api/admin/keys',
+    {
+      schema: {
+        body: ref('KeyRemoval'),
+        response: {
+          200: ref('KeyRemovalResult'),
+          400: ref('Error'),
+          404: ref('Error')
+        }
+      }
+    },
+    async (request, reply) => {
+      const { sku, count } = request.body
+
+      const product = await app.pool.query('select 1 from products where sku = $1', [sku])
+
+      if (product.rowCount === 0) {
+        return reply.status(404).send({ error: 'product_not_found', message: `Unknown sku ${sku}` })
+      }
+
+      const result = await withTransaction(async (client) => {
+        const removed = await client.query(
+          `delete from license_keys where id in (
+             select id from license_keys
+             where sku = $1 and allocated_order_id is null and order_id is null
+             order by id
+             limit $2
+             for update skip locked
+           )`,
+          [sku, count]
+        )
+
+        const available = await client.query<{ count: number }>(
+          `select count(*)::int as count from license_keys
+           where sku = $1 and allocated_order_id is null and order_id is null`,
+          [sku]
+        )
+
+        return {
+          removed: removed.rowCount ?? 0,
+          available: available.rows[0]?.count ?? 0
+        }
+      }, app.pool)
+
+      return reply.send({ sku, requested: count, ...result })
     }
   )
 

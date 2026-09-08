@@ -135,3 +135,25 @@ export const restockKeys = (sku, keys) =>
     method: 'POST',
     body: JSON.stringify({ sku, keys })
   })
+
+/**
+ * @param {string} sku
+ * @param {{ price?: number, oldPrice?: number | null }} patch
+ * @returns {Promise<Product>}
+ */
+export const updateProduct = (sku, patch) =>
+  request(`/api/admin/products/${encodeURIComponent(sku)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch)
+  })
+
+/**
+ * @param {string} sku
+ * @param {number} count
+ * @returns {Promise<{ sku: string, removed: number, requested: number, available: number }>}
+ */
+export const removeKeys = (sku, count) =>
+  request('/api/admin/keys', {
+    method: 'DELETE',
+    body: JSON.stringify({ sku, count })
+  })

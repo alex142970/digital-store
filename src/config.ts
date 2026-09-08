@@ -19,6 +19,10 @@ const schema = z.object({
   ORDER_EXPIRES_AFTER_MS: z.coerce.number().int().positive().default(1_800_000),
   RESERVATION_TTL_MS: z.coerce.number().int().positive().default(300_000),
   RESERVATION_SWEEP_INTERVAL_MS: z.coerce.number().int().nonnegative().default(2_000),
+  SSE_HEARTBEAT_MS: z.coerce.number().int().positive().default(15_000),
+  SSE_RETRY_MS: z.coerce.number().int().positive().default(3_000),
+  SSE_MAX_BUFFER_BYTES: z.coerce.number().int().positive().default(262_144),
+  CATALOG_EVENT_RETENTION_MS: z.coerce.number().int().positive().default(3_600_000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info')
 })
 

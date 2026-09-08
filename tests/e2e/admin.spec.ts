@@ -217,7 +217,7 @@ test.describe('админка', () => {
 
     const orderId = await stuckOrder(request)
 
-    await page.getByRole('button', { name: 'Обновить' }).click()
+    await page.getByRole('button', { name: 'Обновить', exact: true }).click()
 
     await expect(page.locator(`[data-order-row="${orderId}"]`)).toBeVisible()
     const after = Number(await page.locator('[data-orders]').getAttribute('data-count'))
@@ -233,5 +233,82 @@ test.describe('админка', () => {
     const message = page.locator('[data-message]')
     await expect(message).toBeVisible()
     await expect(message).toHaveAttribute('data-kind', 'error')
+  })
+
+  test('раздел «Цены и остатки» показывает каталог и меняет цену', async ({ page, request }) => {
+    await page.goto('/admin.html')
+
+    const rows = page.locator('[data-product-row]')
+    await expect(rows.first()).toBeVisible()
+
+    const row = page.locator('[data-product-row="KEY-GTA5"]')
+    const price = row.locator('[data-price]')
+
+    const before = await request.get('/api/products')
+    const original = (await before.json()).products.find(
+      (item: { sku: string }) => item.sku === 'KEY-GTA5'
+    ).price
+
+    await price.fill('4321')
+    await row.getByRole('button', { name: 'Сохранить цену' }).click()
+
+    await expect(page.locator('[data-message]')).toContainText('4321')
+
+    const after = await request.get('/api/products')
+    const updated = (await after.json()).products.find(
+      (item: { sku: string }) => item.sku === 'KEY-GTA5'
+    )
+    expect(updated.price).toBe(4321)
+
+    await request.patch('/api/admin/products/KEY-GTA5', { data: { price: original } })
+  })
+
+  test('кнопки остатка добавляют и убирают единицы', async ({ page, request }) => {
+    await page.goto('/admin.html')
+
+    const row = page.locator('[data-product-row="GIFT-PSN-1000"]')
+    const stock = row.locator('[data-stock]')
+
+    await expect(row).toBeVisible()
+    const before = Number(await stock.textContent())
+
+    await row.getByRole('button', { name: '+1' }).click()
+    await expect(stock).toHaveText(String(before + 1))
+
+    await row.getByRole('button', { name: '−1' }).click()
+    await expect(stock).toHaveText(String(before))
+
+    const catalog = await request.get('/api/products')
+    const product = (await catalog.json()).products.find(
+      (item: { sku: string }) => item.sku === 'GIFT-PSN-1000'
+    )
+    expect(product.available).toBe(before)
+  })
+
+  test('зачёркнутая цена ниже текущей отклоняется понятной ошибкой', async ({ request }) => {
+    const response = await request.patch('/api/admin/products/KEY-EFT', {
+      data: { oldPrice: 1 }
+    })
+
+    expect(response.status()).toBe(400)
+    expect((await response.json()).error).toBe('validation_error')
+  })
+
+  test('забронированные и выданные ключи удалить нельзя', async ({ request }) => {
+    await resetStuckProduct()
+    await seedStuckKey()
+
+    const created = await request.post('/api/orders', {
+      data: { sku: STUCK_SKU, idempotencyKey: `e2e-protected-${Date.now()}` }
+    })
+    expect(created.status()).toBe(201)
+
+    const removal = await request.delete('/api/admin/keys', {
+      data: { sku: STUCK_SKU, count: 5 }
+    })
+
+    expect(removal.status()).toBe(200)
+    const body = await removal.json()
+    expect(body).toMatchObject({ requested: 5, removed: 0, available: 0 })
   })
 })

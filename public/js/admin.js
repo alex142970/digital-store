@@ -1,4 +1,13 @@
-import { ApiError, listAdminOrders, listPromocodes, retryAdminOrder, restockKeys } from './api.js'
+import {
+  ApiError,
+  listAdminOrders,
+  listProducts,
+  listPromocodes,
+  removeKeys,
+  restockKeys,
+  retryAdminOrder,
+  updateProduct
+} from './api.js'
 
 const RETRYABLE = ['paid', 'delivering', 'out_of_stock', 'delivery_failed']
 
@@ -18,6 +27,8 @@ const NOTES = {
   all: 'Все заказы в системе, включая завершённые.'
 }
 
+const catalogBox = document.querySelector('[data-catalog]')
+const refreshCatalogButton = document.querySelector('[data-refresh-catalog]')
 const ordersBox = document.querySelector('[data-orders]')
 const promoBox = document.querySelector('[data-promocodes]')
 const messageBox = document.querySelector('[data-message]')
@@ -30,6 +41,8 @@ const filters = [...document.querySelectorAll('[data-filter]')].filter(
 )
 
 if (
+  catalogBox instanceof HTMLElement &&
+  refreshCatalogButton instanceof HTMLButtonElement &&
   ordersBox instanceof HTMLElement &&
   promoBox instanceof HTMLElement &&
   messageBox instanceof HTMLElement &&
@@ -262,6 +275,137 @@ if (
     await load()
   })
 
+  /** @param {import('./api.js').Product} product */
+  const catalogRow = (product) => {
+    const row = document.createElement('tr')
+    row.dataset.productRow = product.sku
+
+    const sku = document.createElement('td')
+    sku.textContent = product.sku
+
+    const name = document.createElement('td')
+    name.textContent = product.name
+
+    const priceCell = document.createElement('td')
+    const price = document.createElement('input')
+    price.type = 'number'
+    price.min = '1'
+    price.value = String(product.price)
+    price.dataset.price = product.sku
+    price.className = 'admin__price'
+    priceCell.append(price)
+
+    const stock = document.createElement('td')
+    stock.dataset.stock = product.sku
+    stock.textContent = String(product.available ?? 0)
+
+    const actions = document.createElement('td')
+    actions.className = 'admin__row-actions'
+
+    const apply = document.createElement('button')
+    apply.type = 'button'
+    apply.textContent = 'Сохранить цену'
+    apply.addEventListener('click', async () => {
+      clearMessage()
+
+      try {
+        const updated = await updateProduct(product.sku, { price: Number(price.value) })
+        showMessage(`${updated.sku}: цена ${updated.price} ₽`, 'ok')
+        await loadCatalog()
+      } catch (error) {
+        reportError(error)
+      }
+    })
+
+    const minus = document.createElement('button')
+    minus.type = 'button'
+    minus.dataset.minus = product.sku
+    minus.textContent = '−1'
+    minus.addEventListener('click', () => void changeStock(product.sku, -1))
+
+    const plus = document.createElement('button')
+    plus.type = 'button'
+    plus.dataset.plus = product.sku
+    plus.textContent = '+1'
+    plus.addEventListener('click', () => void changeStock(product.sku, 1))
+
+    const drain = document.createElement('button')
+    drain.type = 'button'
+    drain.dataset.drain = product.sku
+    drain.textContent = 'Обнулить'
+    drain.addEventListener('click', () => {
+      const left = Number(stock.textContent ?? '0')
+      void changeStock(product.sku, -left)
+    })
+
+    actions.append(apply, minus, plus, drain)
+    row.append(sku, name, priceCell, stock, actions)
+
+    return row
+  }
+
+  /**
+   * @param {string} sku
+   * @param {number} delta
+   */
+  const changeStock = async (sku, delta) => {
+    clearMessage()
+
+    if (delta === 0) return
+
+    try {
+      if (delta > 0) {
+        const stamp = Date.now().toString(36).toUpperCase()
+        const keys = Array.from({ length: delta }, (_, i) => `ADMIN-${stamp}-${sku}-${i}`)
+        const result = await restockKeys(sku, keys)
+        showMessage(`${sku}: добавлено ${result.added}, свободно ${result.available}`, 'ok')
+      } else {
+        const result = await removeKeys(sku, -delta)
+        showMessage(`${sku}: убрано ${result.removed}, свободно ${result.available}`, 'ok')
+      }
+
+      await loadCatalog()
+    } catch (error) {
+      reportError(error)
+    }
+  }
+
+  const loadCatalog = async () => {
+    try {
+      const { products } = await listProducts()
+
+      catalogBox.replaceChildren()
+
+      const table = document.createElement('table')
+      table.className = 'admin__table'
+
+      const head = document.createElement('thead')
+      const headRow = document.createElement('tr')
+
+      for (const title of ['SKU', 'Название', 'Цена', 'Свободно', '']) {
+        const cell = document.createElement('th')
+        cell.textContent = title
+        headRow.append(cell)
+      }
+
+      head.append(headRow)
+
+      const body = document.createElement('tbody')
+      products.forEach((/** @type {import('./api.js').Product} */ product) =>
+        body.append(catalogRow(product))
+      )
+
+      table.append(head, body)
+      catalogBox.append(table)
+    } catch (error) {
+      reportError(error)
+    }
+  }
+
+  refreshCatalogButton.addEventListener('click', () => void loadCatalog())
+
+  void loadCatalog()
+
   restockForm.addEventListener('submit', async (event) => {
     event.preventDefault()
     clearMessage()
@@ -285,6 +429,7 @@ if (
       showMessage(`${sku}: добавлено ${result.added}, свободно ${result.available}`, 'ok')
       restockForm.reset()
       await load()
+      await loadCatalog()
     } catch (error) {
       reportError(error)
     } finally {

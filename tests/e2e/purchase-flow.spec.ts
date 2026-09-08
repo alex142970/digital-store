@@ -210,7 +210,7 @@ test.describe('покупка товара', () => {
 
     await expect(card.locator('.card__error')).toBeVisible()
     await expect(buy).toBeEnabled()
-    await expect(buy).toHaveText(/Купить/)
+    await expect(buy).toHaveText('Повторить')
     await expect(page).toHaveURL(/\/$/)
 
     await page.unroute('**/api/orders')

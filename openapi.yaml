@@ -254,6 +254,44 @@ paths:
                     items:
                       $ref: '#/components/schemas/Promocode'
 
+  /api/admin/products/{sku}:
+    patch:
+      tags: [admin]
+      operationId: updateProduct
+      summary: Изменить цену товара
+      parameters:
+        - $ref: '#/components/parameters/Sku'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductPatch'
+      responses:
+        '200':
+          description: Товар после изменения
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/events:
+    get:
+      tags: [catalog]
+      operationId: catalogStream
+      summary: Поток изменений каталога
+      responses:
+        '200':
+          description: Поток событий в формате text/event-stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
   /api/admin/keys:
     post:
       tags: [admin]
@@ -272,6 +310,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RestockResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [admin]
+      operationId: removeKeys
+      summary: Убрать свободные ключи из пула
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KeyRemoval'
+      responses:
+        '200':
+          description: Ключи убраны
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyRemovalResult'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -304,6 +363,15 @@ paths:
 
 components:
   parameters:
+    Sku:
+      name: sku
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
+
     OrderId:
       name: orderId
       in: path
@@ -488,6 +556,42 @@ components:
         reason:
           type: string
 
+    ProductPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        price:
+          type: integer
+          minimum: 1
+        oldPrice:
+          type: [integer, 'null']
+
+    KeyRemovalResult:
+      type: object
+      required: [sku, requested, removed, available]
+      properties:
+        sku:
+          type: string
+        requested:
+          type: integer
+        removed:
+          type: integer
+        available:
+          type: integer
+
+    KeyRemoval:
+      type: object
+      additionalProperties: false
+      required: [sku, count]
+      properties:
+        sku:
+          type: string
+        count:
+          type: integer
+          minimum: 1
+          maximum: 1000
+
     CheckoutConflict:
       type: object
       required: [error, message]
@@ -608,6 +712,15 @@ components:
           type: integer
         remaining:
           type: integer
+
+    SkuParams:
+      type: object
+      required: [sku]
+      properties:
+        sku:
+          type: string
+          minLength: 1
+          maxLength: 64
 
     OrderIdParams:
       type: object
