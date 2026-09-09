@@ -20,7 +20,8 @@
     "seed": "node --env-file-if-exists=.env src/db/seed.ts",
     "openapi:types": "openapi-typescript openapi.yaml -o src/types/api.d.ts",
     "openapi:lint": "redocly lint openapi.yaml",
-    "race": "node --env-file-if-exists=.env scripts/race.ts"
+    "race": "node --env-file-if-exists=.env scripts/race.ts",
+    "race:last-unit": "node --env-file-if-exists=.env scripts/last-unit.ts"
   },
   "dependencies": {
     "@fastify/compress": "^9.2.0",
