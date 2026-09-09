@@ -52,6 +52,14 @@ export async function dropReservedKey(orderId: string): Promise<void> {
   await db().query('delete from license_keys where allocated_order_id = $1', [orderId])
 }
 
+export async function shortenReservation(orderId: string, seconds: number): Promise<void> {
+  await db().query(
+    `update orders set reservation_expires_at = now() + ($2::int * interval '1 second')
+     where id = $1`,
+    [orderId, seconds]
+  )
+}
+
 export async function keysUsedFor(code: string): Promise<number> {
   const { rows } = await db().query<{ count: number }>(
     'select count(*)::int as count from license_keys where code = $1 and order_id is not null',

@@ -38,18 +38,17 @@ test.describe('живая витрина', () => {
     }
   })
 
-  test('индикатор показывает, что поток подключён', async ({ page }) => {
+  test('поток событий подключается при открытии витрины', async ({ page }) => {
     await page.goto('/')
 
-    await expect(page.locator('[data-live]')).toHaveAttribute('data-state', 'online')
-    await expect(page.locator('[data-live]')).toHaveText('в эфире')
+    await expect(page.locator('html')).toHaveAttribute('data-live', 'online')
   })
 
-  test('индикатор не сдвигает шапку: геометрия макета сохранена', async ({ page }) => {
+  test('геометрия шапки соответствует макету', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto('/')
 
-    await expect(page.locator('[data-live]')).toHaveAttribute('data-state', 'online')
+    await expect(page.locator('html')).toHaveAttribute('data-live', 'online')
 
     const geometry = await page.evaluate(() => {
       const box = (selector: string) => {
@@ -85,8 +84,6 @@ test.describe('живая витрина', () => {
       const before = await first.locator(card).textContent()
       expect(before).not.toContain('1 234')
 
-      // стартовые перезапросы после open/resync должны отработать до правки цены,
-      // иначе тест пройдёт даже при сломанной обработке событий
       await first.waitForTimeout(1500)
       await second.waitForTimeout(100)
 
@@ -179,12 +176,11 @@ test.describe('живая витрина', () => {
 
     await page.goto('/')
 
-    await expect(page.locator('[data-live]')).toHaveAttribute('data-state', 'offline', {
+    await expect(page.locator('html')).toHaveAttribute('data-live', 'offline', {
       timeout: 10_000
     })
 
-    // приложение вернулось: EventSource был в CLOSED, клиент обязан пересоздать его сам
-    await expect(page.locator('[data-live]')).toHaveAttribute('data-state', 'online', {
+    await expect(page.locator('html')).toHaveAttribute('data-live', 'online', {
       timeout: 20_000
     })
     expect(rejected).toBe(2)
@@ -193,10 +189,6 @@ test.describe('живая витрина', () => {
     await first_price_changes(page, request, card)
   })
 })
-
-/**
- * После восстановления связи витрина обязана снова принимать изменения.
- */
 async function first_price_changes(
   page: import('@playwright/test').Page,
   request: APIRequestContext,

@@ -25,5 +25,5 @@ document.addEventListener('click', (event) => {
   if (target instanceof Element && target.closest('a[href="#"]')) event.preventDefault()
 })
 
-initLive(document.querySelector('[data-live]'))
+initLive()
 initProducts()

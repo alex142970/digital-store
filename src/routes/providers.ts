@@ -58,6 +58,8 @@ export default async function providerRoutes(app: FastifyInstance) {
           `provider:${provider}:${request_id}`
         ])
 
+        await client.query('select 1 from orders where id = $1 for update', [order_id])
+
         const repeated = await client.query<{ code: string }>(
           'select code from provider_issues where provider = $1 and request_id = $2',
           [provider, request_id]

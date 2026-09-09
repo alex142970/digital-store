@@ -141,6 +141,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/orders/{orderId}/cancel:
+    post:
+      tags: [orders]
+      operationId: cancelOrder
+      summary: Отменить неоплаченный заказ и снять бронь
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Заказ отменён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 'Заказ уже нельзя отменить: оплачен, выдан или платёж в обработке'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /webhook/payment:
     post:
       tags: [webhooks]
@@ -434,7 +459,20 @@ components:
 
     Order:
       type: object
-      required: [id, sku, amount, discount, total, currency, status, createdAt, updatedAt]
+      required:
+        [
+          id,
+          sku,
+          amount,
+          discount,
+          total,
+          currency,
+          currentPrice,
+          priceChanged,
+          status,
+          createdAt,
+          updatedAt
+        ]
       properties:
         id:
           type: string
@@ -456,6 +494,26 @@ components:
           type: string
         failureReason:
           type: [string, 'null']
+        failureCode:
+          type: [string, 'null']
+          description: Машиночитаемая причина отказа
+        currentPrice:
+          type: integer
+          minimum: 0
+          description: Цена товара в каталоге прямо сейчас
+        priceChanged:
+          type: boolean
+          description: Заказ ждёт оплаты, и цена в каталоге разошлась с зафиксированной в нём
+        reservationExpiresAt:
+          type: [string, 'null']
+          format: date-time
+          description: Момент снятия брони; null для любого заказа вне статуса created
+        expiresInMs:
+          type: [integer, 'null']
+          minimum: 0
+          description: >-
+            Остаток брони по часам сервера, чтобы не зависеть от часов клиента;
+            null для любого заказа вне статуса created
         promoCode:
           type: [string, 'null']
         status:
@@ -635,6 +693,8 @@ components:
             - promo_currency_mismatch
             - product_not_found
             - order_not_payable
+            - order_not_cancellable
+            - payment_in_progress
             - rate_limited
             - internal_error
         message:

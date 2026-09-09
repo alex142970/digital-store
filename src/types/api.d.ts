@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/orders/{orderId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Отменить неоплаченный заказ и снять бронь */
+        post: operations["cancelOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/webhook/payment": {
         parameters: {
             query?: never;
@@ -256,6 +273,19 @@ export interface components {
             total: number;
             currency: string;
             failureReason?: string | null;
+            /** @description Машиночитаемая причина отказа */
+            failureCode?: string | null;
+            /** @description Цена товара в каталоге прямо сейчас */
+            currentPrice: number;
+            /** @description Заказ ждёт оплаты, и цена в каталоге разошлась с зафиксированной в нём */
+            priceChanged: boolean;
+            /**
+             * Format: date-time
+             * @description Момент снятия брони; null для любого заказа вне статуса created
+             */
+            reservationExpiresAt?: string | null;
+            /** @description Остаток брони по часам сервера, чтобы не зависеть от часов клиента; null для любого заказа вне статуса created */
+            expiresInMs?: number | null;
             promoCode?: string | null;
             status: components["schemas"]["OrderStatus"];
             /** @description Код активации товара */
@@ -328,7 +358,7 @@ export interface components {
         };
         Error: {
             /** @enum {string} */
-            error: "validation_error" | "not_found" | "conflict" | "promo_limit_reached" | "promo_not_found" | "out_of_stock" | "reservation_expired" | "promo_currency_mismatch" | "product_not_found" | "order_not_payable" | "rate_limited" | "internal_error";
+            error: "validation_error" | "not_found" | "conflict" | "promo_limit_reached" | "promo_not_found" | "out_of_stock" | "reservation_expired" | "promo_currency_mismatch" | "product_not_found" | "order_not_payable" | "order_not_cancellable" | "payment_in_progress" | "rate_limited" | "internal_error";
             message: string;
         };
         Health: {
@@ -557,6 +587,39 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             /** @description Заказ нельзя оплатить в текущем статусе */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    cancelOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orderId: components["parameters"]["OrderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Заказ отменён */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            /** @description Заказ уже нельзя отменить: оплачен, выдан или платёж в обработке */
             409: {
                 headers: {
                     [name: string]: unknown;

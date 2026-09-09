@@ -48,7 +48,10 @@ async function expireAbandonedOrders(app: FastifyInstance): Promise<number> {
 
     for (const row of rows) {
       const updated = await client.query(
-        `update orders set status = 'payment_failed', failure_reason = 'order expired before payment'
+        `update orders
+         set status = 'payment_failed',
+             failure_code = 'reservation_expired',
+             failure_reason = 'order expired before payment'
          where id = $1 and status = 'created'`,
         [row.id]
       )

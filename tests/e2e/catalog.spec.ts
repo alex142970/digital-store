@@ -95,7 +95,6 @@ test.describe('витрина', () => {
     const menu = page.locator('[data-catalog-menu]')
     await page.locator('[data-catalog-toggle]').click()
 
-    // шапка не липкая: базой берём прокрутку уже открытого меню
     const scrollBefore = await page.evaluate(() => window.scrollY)
 
     await menu.getByRole('link', { name: 'Steam', exact: true }).click()

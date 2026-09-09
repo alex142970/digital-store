@@ -1,6 +1,6 @@
 /**
  * @typedef {{ sku: string, name: string, type: string, price: number, currency: string, image: string | null, oldPrice?: number | null, available?: number }} Product
- * @typedef {{ id: string, sku: string, amount: number, discount: number, total: number, currency: string, status: string, code: string | null, failureReason: string | null, createdAt?: string, updatedAt?: string, promoCode?: string | null }} Order
+ * @typedef {{ id: string, sku: string, amount: number, discount: number, total: number, currency: string, currentPrice: number, priceChanged: boolean, reservationExpiresAt?: string | null, expiresInMs?: number | null, status: string, code: string | null, failureReason: string | null, failureCode?: string | null, createdAt?: string, updatedAt?: string, promoCode?: string | null }} Order
  */
 
 const TIMEOUT_MS = 15000
@@ -107,6 +107,13 @@ export const payOrder = (orderId, outcome) =>
  * @returns {Promise<Order>}
  */
 export const getOrder = (orderId) => request(`/api/orders/${encodeURIComponent(orderId)}`)
+
+/**
+ * @param {string} orderId
+ * @returns {Promise<Order>}
+ */
+export const cancelOrder = (orderId) =>
+  request(`/api/orders/${encodeURIComponent(orderId)}/cancel`, { method: 'POST' })
 
 /** @returns {Promise<{ promocodes: { code: string, type: string, value: number, currency: string | null, maxUses: number, usedCount: number, remaining: number }[] }>} */
 export const listPromocodes = () => request('/api/admin/promocodes')

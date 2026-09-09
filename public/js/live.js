@@ -16,8 +16,7 @@ function notify(sku) {
   listeners.forEach((handler) => handler(sku))
 }
 
-/** @param {HTMLElement | null} indicator */
-export function initLive(indicator) {
+export function initLive() {
   /** @type {EventSource | null} */
   let source = null
   let offlineTimer = 0
@@ -26,9 +25,7 @@ export function initLive(indicator) {
 
   /** @param {'online' | 'offline'} state */
   const setState = (state) => {
-    if (!indicator) return
-    indicator.dataset.state = state
-    indicator.textContent = state === 'online' ? 'в эфире' : 'нет связи'
+    document.documentElement.dataset.live = state
   }
 
   const markOffline = () => {
@@ -76,10 +73,11 @@ export function initLive(indicator) {
     source.addEventListener('error', () => {
       markOffline()
 
-      // ответ не 2xx переводит EventSource в CLOSED: браузер сам больше не пытается
       if (source?.readyState === EventSource.CLOSED) reconnect()
     })
   }
+
+  setState('offline')
 
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return

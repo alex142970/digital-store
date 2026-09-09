@@ -42,6 +42,9 @@ export const pay = (ctx: TestContext, orderId: string, outcome: 'success' | 'fai
 export const fetchOrder = (ctx: TestContext, orderId: string) =>
   ctx.app.inject({ method: 'GET', url: `/api/orders/${orderId}` })
 
+export const cancel = (ctx: TestContext, orderId: string) =>
+  ctx.app.inject({ method: 'POST', url: `/api/orders/${orderId}/cancel` })
+
 export const sendWebhook = (ctx: TestContext, event: Record<string, unknown>) =>
   ctx.app.inject({ method: 'POST', url: '/webhook/payment', payload: event })
 

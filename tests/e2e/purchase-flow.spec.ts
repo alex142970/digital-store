@@ -9,6 +9,11 @@ import {
 } from './fixtures.ts'
 
 test.describe('покупка товара', () => {
+  test.afterAll(async () => {
+    await removeStuckProduct()
+    await closeFixtures()
+  })
+
   test('успешная оплата: от клика «Купить» до выдачи ключа', async ({ page }) => {
     await page.goto('/')
 
@@ -150,26 +155,15 @@ test.describe('покупка товара', () => {
     await expect(badge).toHaveAttribute('data-state', 'failed')
     await expect(status).toContainText('key pool is empty')
 
+    await expect(status.getByRole('button', { name: 'Проверить ещё раз' })).toBeVisible()
+
     const code = `E2E-${Date.now().toString(36).toUpperCase()}-PAGE`
     await request.post('/api/admin/keys', { data: { sku: STUCK_SKU, keys: [code] } })
-
-    await expect
-      .poll(
-        async () => {
-          const state = await request.get(`/api/orders/${order.id}`)
-          return (await state.json()).status
-        },
-        { timeout: 15_000 }
-      )
-      .toBe('delivered')
-
-    await status.getByRole('button', { name: 'Проверить ещё раз' }).click()
 
     await expect(badge).toHaveText('Ключ выдан', { timeout: 15_000 })
     await expect(status.locator('.status__key')).toContainText(code)
 
     await removeStuckProduct()
-    await closeFixtures()
   })
 
   test('двойной клик по «Купить» создаёт ровно один заказ', async ({ page }) => {

@@ -151,7 +151,6 @@ function renderCard(product) {
 
   return item
 }
-
 /**
  * @param {Element} root
  * @param {string} text
@@ -184,7 +183,6 @@ function resetBuyButton(button) {
   const left = raw === undefined ? null : Number(raw)
   applyAvailability(button, left !== null && Number.isFinite(left) ? left : null)
 }
-
 /**
  * @param {HTMLButtonElement} button
  * @param {number | null} available
@@ -204,6 +202,24 @@ function applyAvailability(button, available) {
   button.disabled = soldOut
   button.textContent = soldOut ? 'Раскуплено' : 'Купить'
 }
+/**
+ * @param {string} sku
+ * @param {boolean} [focusBuy]
+ */
+function focusCard(sku, focusBuy = false) {
+  const card = document.querySelector(`[data-card="${CSS.escape(sku)}"]`)
+
+  if (!(card instanceof HTMLElement)) return
+
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  card.classList.add('card--highlighted')
+  window.setTimeout(() => card.classList.remove('card--highlighted'), 1600)
+
+  if (!focusBuy) return
+
+  const buy = card.querySelector('[data-buy]')
+  if (buy instanceof HTMLElement) buy.focus({ preventScroll: true })
+}
 
 /** @param {Event} event */
 function onAlternativeClick(event) {
@@ -212,16 +228,7 @@ function onAlternativeClick(event) {
 
   if (!(chosen instanceof HTMLElement) || !chosen.dataset.alternative) return
 
-  const card = document.querySelector(`[data-card="${CSS.escape(chosen.dataset.alternative)}"]`)
-
-  if (!(card instanceof HTMLElement)) return
-
-  card.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  card.classList.add('card--highlighted')
-  window.setTimeout(() => card.classList.remove('card--highlighted'), 1600)
-
-  const buy = card.querySelector('[data-buy]')
-  if (buy instanceof HTMLElement) buy.focus({ preventScroll: true })
+  focusCard(chosen.dataset.alternative, true)
 }
 
 /** @param {Event} event */
@@ -433,6 +440,9 @@ export async function initProducts() {
   })
 
   await load(roots)
+
+  const requested = new URLSearchParams(window.location.search).get('product')
+  if (requested) focusCard(requested)
 }
 
 let loading = false
@@ -480,7 +490,6 @@ async function load(roots) {
     }
   }
 }
-
 /**
  * @param {Product} product
  * @returns {Element | null}
@@ -492,7 +501,6 @@ function renderCardSafely(product) {
     return null
   }
 }
-
 /**
  * @param {Element[]} roots
  * @param {Product[]} products

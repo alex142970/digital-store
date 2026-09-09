@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { ref } from '../openapi.ts'
-import { createOrder, getOrder, OrderError } from '../services/orders.ts'
+import { cancelOrder, createOrder, getOrder, OrderError } from '../services/orders.ts'
 import { buildPaymentEvent } from '../services/payments.ts'
 import { applyPending, receivePayment } from '../services/webhooks.ts'
 import type { components } from '../types/api.d.ts'
@@ -49,6 +49,22 @@ export default async function orderRoutes(app: FastifyInstance) {
       }
     },
     async (request) => getOrder(app.pool, request.params.orderId)
+  )
+
+  app.post<{ Params: { orderId: string } }>(
+    '/api/orders/:orderId/cancel',
+    {
+      schema: {
+        params: ref('OrderIdParams'),
+        response: {
+          200: ref('Order'),
+          400: ref('Error'),
+          404: ref('Error'),
+          409: ref('Error')
+        }
+      }
+    },
+    async (request) => cancelOrder(app.pool, request.params.orderId)
   )
 
   app.post<{ Params: { orderId: string }; Body: PayRequest }>(

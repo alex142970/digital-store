@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto'
 import type pg from 'pg'
 import { withTransaction } from '../db/pool.ts'
-import { allocate, alternativesFor, expireReservations } from './inventory.ts'
-import { reservePromocode } from './promocodes.ts'
+import { allocate, alternativesFor, expireReservations, release } from './inventory.ts'
+import { releasePromocode, reservePromocode } from './promocodes.ts'
 import type { components } from '../types/api.d.ts'
 
 export type Order = components['schemas']['Order']
@@ -34,34 +34,52 @@ type OrderRow = {
   promo_code: string | null
   status: OrderStatus
   currency: string
+  current_price: number
   code: string | null
   failure_reason: string | null
+  failure_code: string | null
+  reservation_expires_at: Date | null
+  expires_in_ms: number | null
   created_at: Date
   updated_at: Date
 }
 
 const SELECT_ORDER = `
   select o.id, o.sku, o.amount, o.discount, o.promo_code, o.status,
-         p.currency, d.code, o.failure_reason, o.created_at, o.updated_at
+         p.currency, p.price as current_price, d.code,
+         o.failure_reason, o.failure_code, o.reservation_expires_at,
+         greatest(0, floor(extract(epoch from (o.reservation_expires_at - now())) * 1000))::int
+           as expires_in_ms,
+         o.created_at, o.updated_at
   from orders o
   join products p on p.sku = o.sku
   left join deliveries d on d.order_id = o.id
 `
 
-const toOrder = (row: OrderRow): Order => ({
-  id: row.id,
-  sku: row.sku,
-  amount: row.amount,
-  discount: row.discount,
-  total: row.amount - row.discount,
-  currency: row.currency,
-  promoCode: row.promo_code,
-  status: row.status,
-  code: row.code,
-  failureReason: row.failure_reason,
-  createdAt: row.created_at.toISOString(),
-  updatedAt: row.updated_at.toISOString()
-})
+const toOrder = (row: OrderRow): Order => {
+  const awaitingPayment = row.status === 'created'
+  const reserved = awaitingPayment && row.reservation_expires_at !== null
+
+  return {
+    id: row.id,
+    sku: row.sku,
+    amount: row.amount,
+    discount: row.discount,
+    total: row.amount - row.discount,
+    currency: row.currency,
+    currentPrice: row.current_price,
+    priceChanged: awaitingPayment && row.current_price !== row.amount,
+    reservationExpiresAt: reserved ? row.reservation_expires_at!.toISOString() : null,
+    expiresInMs: reserved ? (row.expires_in_ms ?? 0) : null,
+    promoCode: row.promo_code,
+    status: row.status,
+    code: row.code,
+    failureReason: row.failure_reason,
+    failureCode: row.failure_code,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString()
+  }
+}
 
 const newOrderId = () => `ord_${randomBytes(9).toString('base64url')}`
 
@@ -157,4 +175,60 @@ export async function getOrder(pool: pg.Pool, id: string): Promise<Order> {
   }
 
   return toOrder(rows[0])
+}
+
+export async function cancelOrder(pool: pg.Pool, id: string): Promise<Order> {
+  await withTransaction(async (client) => {
+    const { rows } = await client.query<{ status: OrderStatus }>(
+      'select status from orders where id = $1 for update',
+      [id]
+    )
+
+    const current = rows[0]
+
+    if (!current) {
+      throw new OrderError(404, 'not_found', `Order ${id} not found`)
+    }
+
+    if (current.status !== 'created') {
+      throw new OrderError(409, 'order_not_cancellable', `Order is already ${current.status}`)
+    }
+
+    const paying = await client.query(
+      `select 1 from webhook_events
+       where order_id = $1 and status = 'paid' and applied_at is null`,
+      [id]
+    )
+
+    if ((paying.rowCount ?? 0) > 0) {
+      throw new OrderError(409, 'payment_in_progress', 'Payment for this order is being processed')
+    }
+
+    const issued = await client.query(
+      'select 1 from license_keys where allocated_order_id = $1 and order_id is not null',
+      [id]
+    )
+
+    if ((issued.rowCount ?? 0) > 0) {
+      throw new OrderError(409, 'order_not_cancellable', 'Key for this order is already issued')
+    }
+
+    const cancelled = await client.query(
+      `update orders
+       set status = 'payment_failed',
+           failure_code = 'cancelled_by_customer',
+           failure_reason = 'order cancelled by the customer'
+       where id = $1 and status = 'created'`,
+      [id]
+    )
+
+    if ((cancelled.rowCount ?? 0) === 0) {
+      throw new OrderError(409, 'order_not_cancellable', 'Order is no longer cancellable')
+    }
+
+    await release(client, id)
+    await releasePromocode(client, id)
+  }, pool)
+
+  return getOrder(pool, id)
 }
