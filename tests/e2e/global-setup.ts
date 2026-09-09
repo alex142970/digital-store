@@ -39,6 +39,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.DATABASE_URL = databaseUrl
   process.env.E2E_DATABASE_URL = databaseUrl
   process.env.LOG_LEVEL = 'error'
+  process.env.CATALOG_BULK_SIZE = '1200'
 
   const { createPool } = await import('../../src/db/pool.ts')
   const { migrate } = await import('../../src/db/migrate.ts')
@@ -63,6 +64,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       PROVIDER_TIMEOUT_MS: '1000',
       DELIVERY_SWEEP_INTERVAL_MS: '300',
       DELIVERY_STUCK_AFTER_MS: '1000',
+      CATALOG_BULK_SIZE: '1200',
       LOG_LEVEL: 'error'
     },
     stdio: ['ignore', 'ignore', 'pipe']

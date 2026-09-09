@@ -58,6 +58,52 @@ paths:
                     items:
                       $ref: '#/components/schemas/Product'
 
+  /api/catalog:
+    get:
+      tags: [catalog]
+      operationId: searchCatalog
+      summary: Поиск и фильтры по каталогу
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 100 }
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [topup, key, subscription, giftcard]
+        - name: min
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: max
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: stock
+          in: query
+          description: Только позиции, которые есть в наличии
+          schema: { type: boolean }
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [relevance, price, priceDesc]
+            default: relevance
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 60, default: 24 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Найденные позиции и их общее число
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
   /api/orders:
     post:
       tags: [orders]
@@ -445,6 +491,36 @@ components:
           type: integer
           minimum: 0
           description: Свободных единиц на складе
+
+    CatalogQuery:
+      type: object
+      additionalProperties: false
+      properties:
+        q: { type: string, maxLength: 100 }
+        type:
+          type: string
+          enum: [topup, key, subscription, giftcard]
+        min: { type: integer, minimum: 0 }
+        max: { type: integer, minimum: 0 }
+        stock: { type: boolean }
+        sort:
+          type: string
+          enum: [relevance, price, priceDesc]
+        limit: { type: integer, minimum: 1, maximum: 60 }
+        offset: { type: integer, minimum: 0 }
+
+    CatalogPage:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        total:
+          type: integer
+          minimum: 0
+          description: Сколько всего позиций подходит под запрос
 
     OrderStatus:
       type: string

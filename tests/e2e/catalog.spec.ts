@@ -18,7 +18,7 @@ test.describe('витрина', () => {
     await expect(firstCard.getByRole('button', { name: /Купить/ })).toBeVisible()
   })
 
-  test('поиск: фокус затемняет страницу, Enter не перезагружает её', async ({ page }) => {
+  test('поиск: фокус затемняет страницу, Escape убирает затемнение', async ({ page }) => {
     await page.goto('/')
 
     const overlay = page.locator('.overlay')
@@ -28,14 +28,20 @@ test.describe('витрина', () => {
     await input.click()
     await expect(overlay).toHaveCSS('visibility', 'visible')
 
+    await input.blur()
+    await expect(overlay).toHaveCSS('visibility', 'hidden')
+  })
+
+  test('поиск из шапки открывает результаты с сохранённым запросом', async ({ page }) => {
+    await page.goto('/')
+
+    const input = page.getByPlaceholder('Игра, приложение или услуга...')
     await input.fill('gta')
     await input.press('Enter')
 
-    await expect(page).toHaveURL(/\/$/)
-    await expect(page.locator('[data-products="popular"] .card')).toHaveCount(5)
-
-    await input.blur()
-    await expect(overlay).toHaveCSS('visibility', 'hidden')
+    await expect(page).toHaveURL(/\/search\.html\?q=gta/)
+    await expect(page.locator('[data-filter-q]')).toHaveValue('gta')
+    await expect(page.locator('[data-results] > li').first()).toContainText('GTA')
   })
 
   test('кнопка поиска не заливается серым при наведении', async ({ page }) => {

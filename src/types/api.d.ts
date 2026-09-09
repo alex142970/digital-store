@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Поиск и фильтры по каталогу */
+        get: operations["searchCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/orders": {
         parameters: {
             query?: never;
@@ -259,6 +276,23 @@ export interface components {
             image?: string | null;
             /** @description Свободных единиц на складе */
             available?: number;
+        };
+        CatalogQuery: {
+            q?: string;
+            /** @enum {string} */
+            type?: "topup" | "key" | "subscription" | "giftcard";
+            min?: number;
+            max?: number;
+            stock?: boolean;
+            /** @enum {string} */
+            sort?: "relevance" | "price" | "priceDesc";
+            limit?: number;
+            offset?: number;
+        };
+        CatalogPage: {
+            items: components["schemas"]["Product"][];
+            /** @description Сколько всего позиций подходит под запрос */
+            total: number;
         };
         /** @enum {string} */
         OrderStatus: "created" | "paid" | "delivering" | "delivered" | "payment_failed" | "out_of_stock" | "delivery_failed";
@@ -491,6 +525,37 @@ export interface operations {
                     };
                 };
             };
+        };
+    };
+    searchCatalog: {
+        parameters: {
+            query?: {
+                q?: string;
+                type?: "topup" | "key" | "subscription" | "giftcard";
+                min?: number;
+                max?: number;
+                /** @description Только позиции, которые есть в наличии */
+                stock?: boolean;
+                sort?: "relevance" | "price" | "priceDesc";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Найденные позиции и их общее число */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
         };
     };
     createOrder: {

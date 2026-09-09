@@ -5,6 +5,7 @@ const schema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   DATABASE_URL: z.string().min(1),
   PG_POOL_MAX: z.coerce.number().int().positive().default(20),
+  CATALOG_BULK_SIZE: z.coerce.number().int().nonnegative().default(0),
   PG_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
   PG_LOCK_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
   TRUST_PROXY: z.string().default('127.0.0.1'),

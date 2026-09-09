@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Поиск по каталогу — Digital Store</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles/main.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#results">Перейти к результатам</a>
+
+    <header class="header">
+      <div class="container header__inner">
+        <a class="header__logo" href="/">Digital Store</a>
+        <a class="header__back" href="/">На главную</a>
+      </div>
+    </header>
+
+    <main class="container search-page">
+      <h1 class="search-page__title">Поиск по каталогу</h1>
+
+      <form class="filters" data-filters autocomplete="off">
+        <label class="filters__field filters__field--wide">
+          <span class="filters__label">Что ищем</span>
+          <input
+            class="filters__input"
+            type="search"
+            name="q"
+            maxlength="100"
+            data-filter-q
+            placeholder="Игра, приложение или услуга"
+          />
+        </label>
+
+        <label class="filters__field">
+          <span class="filters__label">Тип</span>
+          <select class="filters__input" name="type" data-filter-type>
+            <option value="">любой</option>
+            <option value="key">ключи</option>
+            <option value="subscription">подписки</option>
+            <option value="topup">пополнения</option>
+            <option value="giftcard">подарочные карты</option>
+          </select>
+        </label>
+
+        <label class="filters__field filters__field--narrow">
+          <span class="filters__label">Цена от</span>
+          <input class="filters__input" type="number" name="min" min="0" data-filter-min />
+        </label>
+
+        <label class="filters__field filters__field--narrow">
+          <span class="filters__label">до</span>
+          <input class="filters__input" type="number" name="max" min="0" data-filter-max />
+        </label>
+
+        <label class="filters__field">
+          <span class="filters__label">Сортировка</span>
+          <select class="filters__input" name="sort" data-filter-sort>
+            <option value="relevance">по совпадению</option>
+            <option value="price">сначала дешёвые</option>
+            <option value="priceDesc">сначала дорогие</option>
+          </select>
+        </label>
+
+        <label class="filters__toggle">
+          <input type="checkbox" name="stock" data-filter-stock />
+          <span>Только в наличии</span>
+        </label>
+      </form>
+
+      <p class="search-page__summary" data-summary role="status" aria-live="polite"></p>
+
+      <section id="results">
+        <ul class="cards cards--grid" data-results></ul>
+        <p class="search-page__empty" data-empty hidden></p>
+        <div class="search-page__more">
+          <button class="button button--ghost" type="button" data-more hidden>Показать ещё</button>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/js/search-page.js"></script>
+  </body>
+</html>

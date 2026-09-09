@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type pg from 'pg'
+import { config } from '../config.ts'
+import { bulkCatalog } from './bulk-catalog.ts'
 import { createPool } from './pool.ts'
 
 const DATA_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data')
@@ -60,10 +62,11 @@ export async function seed(target?: pg.Pool): Promise<Record<string, number>> {
     let productRows = 0
     for (const product of products) {
       const result = await client.query(
-        `insert into products (sku, name, type, price, currency, image, old_price)
-         values ($1, $2, $3, $4, $5, $6, $7)
+        `insert into products (sku, name, type, price, currency, image, old_price, featured)
+         values ($1, $2, $3, $4, $5, $6, $7, true)
          on conflict (sku) do update
-           set name = excluded.name,
+           set featured = true,
+               name = excluded.name,
                type = excluded.type,
                price = excluded.price,
                currency = excluded.currency,
@@ -80,6 +83,34 @@ export async function seed(target?: pg.Pool): Promise<Record<string, number>> {
         ]
       )
       productRows += result.rowCount ?? 0
+    }
+
+    const bulk = bulkCatalog(config.CATALOG_BULK_SIZE)
+
+    if (bulk.length > 0) {
+      const result = await client.query(
+        `insert into products (sku, name, type, price, currency)
+         select * from unnest($1::text[], $2::text[], $3::text[], $4::int[], $5::text[])
+         on conflict (sku) do nothing`,
+        [
+          bulk.map((item) => item.sku),
+          bulk.map((item) => item.name),
+          bulk.map((item) => item.type),
+          bulk.map((item) => item.price),
+          bulk.map((item) => item.currency)
+        ]
+      )
+
+      productRows += result.rowCount ?? 0
+
+      await client.query(
+        `insert into license_keys (sku, code)
+         select p.sku, upper(substr(md5(p.sku || ':' || n::text), 1, 12))
+         from products p cross join generate_series(1, 5) as n
+         where p.sku like 'BULK-%'
+           and abs(hashtext(p.sku)) % 7 <> 0
+         on conflict (code) do nothing`
+      )
     }
 
     const keyResult = await client.query(

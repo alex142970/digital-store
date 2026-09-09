@@ -6,6 +6,7 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgres://store:${POSTGRES_PASSWORD:?}@db:5432/store
+      CATALOG_BULK_SIZE: ${CATALOG_BULK_SIZE:-3000}
       LOG_LEVEL: info
     depends_on:
       db:

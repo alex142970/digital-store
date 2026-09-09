@@ -49,9 +49,13 @@ const request = async (path, options = {}) => {
         ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
         ...options.headers
       },
-      signal: options.signal ?? AbortSignal.timeout(TIMEOUT_MS)
+      signal: options.signal
+        ? AbortSignal.any([options.signal, AbortSignal.timeout(TIMEOUT_MS)])
+        : AbortSignal.timeout(TIMEOUT_MS)
     })
   } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+
     const timedOut = error instanceof Error && error.name === 'TimeoutError'
     throw new ApiError(
       0,
@@ -60,7 +64,14 @@ const request = async (path, options = {}) => {
     )
   }
 
-  const body = await response.json().catch(() => null)
+  let body = null
+
+  try {
+    body = await response.json()
+  } catch (error) {
+    if (options.signal?.aborted) throw new DOMException('aborted', 'AbortError')
+    if (error instanceof Error && error.name === 'AbortError') throw error
+  }
 
   if (!response.ok) {
     const code = body && typeof body.error === 'string' ? body.error : 'unknown'
@@ -78,6 +89,14 @@ const request = async (path, options = {}) => {
 
 /** @returns {Promise<{ products: Product[] }>} */
 export const listProducts = () => request('/api/products')
+
+/**
+ * @param {Record<string, string>} query
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{ items: Product[], total: number }>}
+ */
+export const searchCatalog = (query, signal) =>
+  request(`/api/catalog?${new URLSearchParams(query)}`, signal ? { signal } : {})
 
 /**
  * @param {string} sku
