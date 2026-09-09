@@ -38,6 +38,10 @@ async function expireFor(
      where o.status = 'created'
        and o.reservation_expires_at < now()
        and ($1::text is null or k.sku = $1)
+       and not exists (
+         select 1 from webhook_events w
+         where w.order_id = o.id and w.status = 'paid' and w.applied_at is null
+       )
      order by o.reservation_expires_at
      limit $2
      for update of o skip locked`,

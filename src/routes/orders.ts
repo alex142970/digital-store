@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { ref } from '../openapi.ts'
 import { cancelOrder, createOrder, getOrder, OrderError } from '../services/orders.ts'
-import { buildPaymentEvent } from '../services/payments.ts'
-import { applyPending, receivePayment } from '../services/webhooks.ts'
+import { acceptPayment } from '../services/payments.ts'
+import { applyPending } from '../services/webhooks.ts'
 import type { components } from '../types/api.d.ts'
 
 type CreateOrderRequest = components['schemas']['CreateOrderRequest']
@@ -82,16 +82,23 @@ export default async function orderRoutes(app: FastifyInstance) {
       }
     },
     async (request, reply) => {
-      const order = await getOrder(app.pool, request.params.orderId)
+      const intent = await acceptPayment(app.pool, request.params.orderId, request.body.outcome)
 
-      if (order.status !== 'created') {
-        throw new OrderError(409, 'order_not_payable', `Order is already ${order.status}`)
+      if ('blocked' in intent) {
+        if (intent.blocked === 'not_found') {
+          throw new OrderError(404, 'not_found', `Order ${request.params.orderId} not found`)
+        }
+
+        if (intent.blocked === 'payment_in_progress') {
+          throw new OrderError(409, 'payment_in_progress', 'Another payment is already accepted')
+        }
+
+        throw new OrderError(409, 'order_not_payable', `Order is already ${intent.blocked}`)
       }
 
-      const event = await buildPaymentEvent(app.pool, order.id, request.body.outcome)
-      await receivePayment(app.pool, event, { awaitDelivery: true })
+      await applyPending(app.pool, request.params.orderId, { awaitDelivery: true })
 
-      return reply.status(202).send({ eventId: event.event_id })
+      return reply.status(202).send({ eventId: intent.event.event_id })
     }
   )
 }

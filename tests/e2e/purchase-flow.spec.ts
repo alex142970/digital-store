@@ -113,7 +113,7 @@ test.describe('покупка товара', () => {
       })
 
     await buy.click()
-    await expect(page).toHaveURL(/\/order\.html\?id=(ord_\w+)/)
+    await expect(page).toHaveURL(/\/order\.html\?id=ord_[\w-]+/)
     const firstId = new URL(page.url()).searchParams.get('id')
 
     await page.goto('/')
@@ -125,7 +125,7 @@ test.describe('покупка товара', () => {
       })
       .click()
 
-    await expect(page).toHaveURL(/\/order\.html\?id=(ord_\w+)/)
+    await expect(page).toHaveURL(/\/order\.html\?id=ord_[\w-]+/)
     const secondId = new URL(page.url()).searchParams.get('id')
 
     expect(secondId).not.toBe(firstId)

@@ -59,14 +59,24 @@ test('invalid body returns validation_error', async () => {
   expect(response.json().error).toBe('validation_error')
 })
 
-test('paying an already paid order returns conflict', async () => {
+test('repeating the same payment is accepted and changes nothing', async () => {
   const order = (await createOrder(ctx, 'double-pay-1')).json()
-  await pay(ctx, order.id)
+  const first = await pay(ctx, order.id)
 
   const second = await pay(ctx, order.id)
 
-  expect(second.statusCode).toBe(409)
-  expect(second.json().error).toBe('order_not_payable')
+  expect(second.statusCode).toBe(202)
+  expect(second.json().eventId).toBe(first.json().eventId)
+})
+
+test('changing the outcome after payment is a conflict', async () => {
+  const order = (await createOrder(ctx, 'double-pay-2')).json()
+  await pay(ctx, order.id)
+
+  const other = await pay(ctx, order.id, 'fail')
+
+  expect(other.statusCode).toBe(409)
+  expect(other.json().error).toBe('order_not_payable')
 })
 
 test('unknown route returns not_found in the contract shape', async () => {

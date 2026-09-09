@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { config } from '../config.ts'
 import { withTransaction } from '../db/pool.ts'
 import { deliverOrder } from './delivery.ts'
+import { applyPending } from './webhooks.ts'
 import { expireReservations, release } from './inventory.ts'
 import { UNFINISHED } from './order-status.ts'
 import { releasePromocode } from './promocodes.ts'
@@ -35,10 +36,14 @@ async function claimStuckOrders(app: FastifyInstance): Promise<string[]> {
 async function expireAbandonedOrders(app: FastifyInstance): Promise<number> {
   return withTransaction(async (client) => {
     const { rows } = await client.query<{ id: string }>(
-      `select id from orders
-       where status = 'created'
-         and created_at < now() - ($1::int * interval '1 millisecond')
-       order by created_at
+      `select id from orders o
+       where o.status = 'created'
+         and o.created_at < now() - ($1::int * interval '1 millisecond')
+         and not exists (
+           select 1 from webhook_events w
+           where w.order_id = o.id and w.status = 'paid' and w.applied_at is null
+         )
+       order by o.created_at
        limit 50
        for update skip locked`,
       [config.ORDER_EXPIRES_AFTER_MS]
@@ -65,6 +70,25 @@ async function expireAbandonedOrders(app: FastifyInstance): Promise<number> {
 
     return expired
   }, app.pool)
+}
+
+async function drainAcceptedPayments(app: FastifyInstance): Promise<string[]> {
+  const { rows } = await app.pool.query<{ order_id: string }>(
+    `select distinct order_id from webhook_events
+     where applied_at is null
+     order by order_id
+     limit 20`
+  )
+
+  for (const row of rows) {
+    try {
+      await applyPending(app.pool, row.order_id)
+    } catch (error) {
+      app.log.error({ err: error, orderId: row.order_id }, 'could not apply accepted payment')
+    }
+  }
+
+  return rows.map((row) => row.order_id)
 }
 
 export function startReservationSweeper(app: FastifyInstance): () => void {
@@ -105,6 +129,12 @@ export function startDeliverySweeper(app: FastifyInstance): () => void {
     running = true
 
     try {
+      const drained = await drainAcceptedPayments(app)
+
+      if (drained.length > 0) {
+        app.log.info({ count: drained.length }, 'sweeper applied accepted payments')
+      }
+
       const expired = await expireAbandonedOrders(app)
 
       if (expired > 0) {
